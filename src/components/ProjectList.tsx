@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Project } from "@/types/scheduler";
 
 interface ProjectListProps {
@@ -28,6 +28,24 @@ export default function ProjectList({
   const [contractEnd, setContractEnd] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  /** If Firestore listener updates before addDoc promise settles, clear the stuck "Saving..." state. */
+  useEffect(() => {
+    if (!submitting) return;
+    const n = name.trim();
+    const a = address.trim();
+    if (!n) return;
+    const found = projects.some((p) => p.name === n && (p.address ?? "").trim() === a);
+    if (found) {
+      setSubmitting(false);
+      setName("");
+      setAddress("");
+      setContractStart("");
+      setContractEnd("");
+      setShowForm(false);
+      setSaveError(null);
+    }
+  }, [projects, submitting, name, address]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

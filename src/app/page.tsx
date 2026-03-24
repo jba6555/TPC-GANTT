@@ -190,7 +190,7 @@ export default function Home() {
             )}
           </div>
 
-          {selectedProject && <TaskForm onAddTask={handleAddTask} />}
+          {selectedProject && <TaskForm onAddTask={handleAddTask} tasks={tasks} />}
           {selectedProject && (
             <GanttScheduler tasks={tasks} onUpdateTaskDates={updateTaskDates} />
           )}

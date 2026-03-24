@@ -19,6 +19,23 @@ function tasksCollectionRef() {
   return collection(getFirestoreDb(), "tasks");
 }
 
+const WRITE_TIMEOUT_MS = 25_000;
+
+/** Firestore writes can hang on bad networks; listener may still update. Bound wait time. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms / 1000}s — check your network.`)),
+      ms,
+    );
+  });
+  return Promise.race([
+    promise.finally(() => clearTimeout(timeoutId)),
+    timeoutPromise,
+  ]);
+}
+
 export function subscribeToProjects(
   callback: (projects: Project[]) => void,
   onError?: (error: Error) => void,
@@ -93,22 +110,30 @@ export function subscribeToTasks(
 }
 
 export async function createProject(userId: string, input: ProjectInput) {
-  const docRef = await addDoc(projectsCollectionRef(), {
-    ...input,
-    createdBy: userId,
-    createdAt: serverTimestamp(),
-  });
+  const docRef = await withTimeout(
+    addDoc(projectsCollectionRef(), {
+      ...input,
+      createdBy: userId,
+      createdAt: serverTimestamp(),
+    }),
+    WRITE_TIMEOUT_MS,
+    "Create project",
+  );
   return docRef.id;
 }
 
 export async function createTask(projectId: string, input: TaskInput, sortOrder: number) {
-  await addDoc(tasksCollectionRef(), {
-    ...input,
-    projectId,
-    status: "not_started",
-    sortOrder,
-    updatedAt: serverTimestamp(),
-  });
+  await withTimeout(
+    addDoc(tasksCollectionRef(), {
+      ...input,
+      projectId,
+      status: "not_started",
+      sortOrder,
+      updatedAt: serverTimestamp(),
+    }),
+    WRITE_TIMEOUT_MS,
+    "Create task",
+  );
 }
 
 export async function updateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
