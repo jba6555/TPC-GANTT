@@ -27,23 +27,37 @@ export default function ProjectList({
   const [contractStart, setContractStart] = useState("");
   const [contractEnd, setContractEnd] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!name.trim()) return;
+    setSaveError(null);
     setSubmitting(true);
-    await onAddProject({
-      name: name.trim(),
-      address: address.trim(),
-      contractStart: contractStart || undefined,
-      contractEnd: contractEnd || undefined,
-    });
-    setName("");
-    setAddress("");
-    setContractStart("");
-    setContractEnd("");
-    setSubmitting(false);
-    setShowForm(false);
+    try {
+      await onAddProject({
+        name: name.trim(),
+        address: address.trim(),
+        contractStart: contractStart || undefined,
+        contractEnd: contractEnd || undefined,
+      });
+      setName("");
+      setAddress("");
+      setContractStart("");
+      setContractEnd("");
+      setShowForm(false);
+    } catch (err: unknown) {
+      const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code) : "";
+      const message = err && typeof err === "object" && "message" in err ? String((err as { message?: string }).message) : "";
+      setSaveError(
+        code === "permission-denied"
+          ? "Firestore blocked the save. Check Firestore rules and that you are signed in."
+          : message || "Could not save project. Check your network and Firebase console (Firestore enabled).",
+      );
+      console.error(err);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -95,6 +109,7 @@ export default function ProjectList({
           >
             {submitting ? "Saving..." : "Save Project"}
           </button>
+          {saveError && <p className="text-xs text-red-600">{saveError}</p>}
         </form>
       )}
 
