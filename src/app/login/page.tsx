@@ -123,11 +123,14 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await loginWithGoogle();
-      // Browser navigates away to Google; code below usually does not run.
+      const usedFullPageRedirect = await loginWithGoogle();
+      if (!usedFullPageRedirect) {
+        router.replace("/");
+      }
     } catch (loginError: unknown) {
       setError(formatAuthError(loginError, origin || (typeof window !== "undefined" ? window.location.origin : "")));
       console.error(loginError);
+    } finally {
       setLoading(false);
     }
   }

@@ -2,6 +2,7 @@ import {
   GoogleAuthProvider,
   getRedirectResult,
   onAuthStateChanged,
+  signInWithPopup,
   signInWithRedirect,
   signOut,
   type User,
@@ -10,18 +11,30 @@ import { getFirebaseAuth } from "@/lib/firebase";
 
 const provider = new GoogleAuthProvider();
 
+function shouldUseRedirectForGoogle() {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h === "localhost" || h === "127.0.0.1";
+}
+
 export function subscribeToAuth(callback: (user: User | null) => void) {
   return onAuthStateChanged(getFirebaseAuth(), callback);
 }
 
-/** Full-page redirect avoids popup issues on localhost (OAuth origins / third-party cookies). */
-export async function loginWithGoogle() {
-  await signInWithRedirect(getFirebaseAuth(), provider);
-}
-
-/** Call once after returning from Google (e.g. on /login mount). */
-export async function completeGoogleRedirect() {
-  return getRedirectResult(getFirebaseAuth());
+/**
+ * Hosted sites: popup sign-in (HTTPS) — redirect flow often breaks when browsers partition storage
+ * between your domain and firebaseapp.com.
+ * Localhost: redirect — more reliable when popups / OAuth origins are finicky on random ports.
+ * @returns true if a full-page redirect was started (don't navigate; the tab is leaving).
+ */
+export async function loginWithGoogle(): Promise<boolean> {
+  const auth = getFirebaseAuth();
+  if (shouldUseRedirectForGoogle()) {
+    await signInWithRedirect(auth, provider);
+    return true;
+  }
+  await signInWithPopup(auth, provider);
+  return false;
 }
 
 /**
