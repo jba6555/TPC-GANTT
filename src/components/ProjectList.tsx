@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Project } from "@/types/scheduler";
 
 interface ProjectListProps {
@@ -29,53 +29,40 @@ export default function ProjectList({
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  /** If Firestore listener updates before addDoc promise settles, clear the stuck "Saving..." state. */
-  useEffect(() => {
-    if (!submitting) return;
-    const n = name.trim();
-    const a = address.trim();
-    if (!n) return;
-    const found = projects.some((p) => p.name === n && (p.address ?? "").trim() === a);
-    if (found) {
-      setSubmitting(false);
-      setName("");
-      setAddress("");
-      setContractStart("");
-      setContractEnd("");
-      setShowForm(false);
-      setSaveError(null);
-    }
-  }, [projects, submitting, name, address]);
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!name.trim()) return;
     setSaveError(null);
     setSubmitting(true);
-    try {
-      await onAddProject({
-        name: name.trim(),
-        address: address.trim(),
-        contractStart: contractStart || undefined,
-        contractEnd: contractEnd || undefined,
+    const safety = window.setTimeout(() => setSubmitting(false), 5000);
+    void onAddProject({
+      name: name.trim(),
+      address: address.trim(),
+      contractStart: contractStart || undefined,
+      contractEnd: contractEnd || undefined,
+    })
+      .then(() => {
+        setName("");
+        setAddress("");
+        setContractStart("");
+        setContractEnd("");
+        setShowForm(false);
+      })
+      .catch((err: unknown) => {
+        const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code) : "";
+        const message =
+          err && typeof err === "object" && "message" in err ? String((err as { message?: string }).message) : "";
+        setSaveError(
+          code === "permission-denied"
+            ? "Firestore blocked the save. Check Firestore rules and that you are signed in."
+            : message || "Could not save project. Check your network and Firebase console (Firestore enabled).",
+        );
+        console.error(err);
+      })
+      .finally(() => {
+        window.clearTimeout(safety);
+        setSubmitting(false);
       });
-      setName("");
-      setAddress("");
-      setContractStart("");
-      setContractEnd("");
-      setShowForm(false);
-    } catch (err: unknown) {
-      const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code) : "";
-      const message = err && typeof err === "object" && "message" in err ? String((err as { message?: string }).message) : "";
-      setSaveError(
-        code === "permission-denied"
-          ? "Firestore blocked the save. Check Firestore rules and that you are signed in."
-          : message || "Could not save project. Check your network and Firebase console (Firestore enabled).",
-      );
-      console.error(err);
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   return (

@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { ProjectTask } from "@/types/scheduler";
+import { useState } from "react";
 import type { TaskInput, TaskType } from "@/types/scheduler";
 
 interface TaskFormProps {
   onAddTask: (input: TaskInput) => Promise<void>;
-  /** Used to clear stuck "Adding..." when the listener updates before addDoc resolves. */
-  tasks?: ProjectTask[];
 }
 
-export default function TaskForm({ onAddTask, tasks = [] }: TaskFormProps) {
+export default function TaskForm({ onAddTask }: TaskFormProps) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<TaskType>("milestone");
   const [startDate, setStartDate] = useState("");
@@ -19,49 +16,37 @@ export default function TaskForm({ onAddTask, tasks = [] }: TaskFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!submitting) return;
-    const t = title.trim();
-    const d = dueDate;
-    if (!t || !d) return;
-    const found = tasks.some((x) => x.title === t && x.dueDate === d);
-    if (found) {
-      setSubmitting(false);
-      setTitle("");
-      setType("milestone");
-      setStartDate("");
-      setDueDate("");
-      setNotes("");
-      setSaveError(null);
-    }
-  }, [tasks, submitting, title, dueDate]);
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!title.trim() || !dueDate) return;
     if (startDate && startDate > dueDate) return;
     setSaveError(null);
     setSubmitting(true);
-    try {
-      await onAddTask({
-        title: title.trim(),
-        type,
-        startDate: startDate || undefined,
-        dueDate,
-        notes: notes.trim() || undefined,
+    const safety = window.setTimeout(() => setSubmitting(false), 5000);
+    void onAddTask({
+      title: title.trim(),
+      type,
+      startDate: startDate || undefined,
+      dueDate,
+      notes: notes.trim() || undefined,
+    })
+      .then(() => {
+        setTitle("");
+        setType("milestone");
+        setStartDate("");
+        setDueDate("");
+        setNotes("");
+      })
+      .catch((err: unknown) => {
+        const message =
+          err && typeof err === "object" && "message" in err ? String((err as { message?: string }).message) : "";
+        setSaveError(message || "Could not add task.");
+        console.error(err);
+      })
+      .finally(() => {
+        window.clearTimeout(safety);
+        setSubmitting(false);
       });
-      setTitle("");
-      setType("milestone");
-      setStartDate("");
-      setDueDate("");
-      setNotes("");
-    } catch (err: unknown) {
-      const message = err && typeof err === "object" && "message" in err ? String((err as { message?: string }).message) : "";
-      setSaveError(message || "Could not add task.");
-      console.error(err);
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   return (
