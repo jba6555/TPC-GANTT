@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import ProjectList from "@/components/ProjectList";
 import TaskForm from "@/components/TaskForm";
 import GanttScheduler from "@/components/GanttScheduler";
-import { logout, subscribeToAuth } from "@/lib/auth";
+import { logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
 import {
   createProject,
   createTask,
@@ -25,16 +25,32 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = subscribeToAuth((user) => {
-      setAuthReady(true);
-      if (!user) {
-        router.replace("/login");
-        return;
+    let unsubscribe: (() => void) | undefined;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await waitForRedirectAndAuthReady();
+      } catch (e) {
+        console.error(e);
       }
-      setUserId(user.uid);
-      setUserEmail(user.email ?? "");
-    });
-    return () => unsubscribe();
+      if (cancelled) return;
+
+      unsubscribe = subscribeToAuth((user) => {
+        setAuthReady(true);
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
+        setUserId(user.uid);
+        setUserEmail(user.email ?? "");
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [router]);
 
   useEffect(() => {

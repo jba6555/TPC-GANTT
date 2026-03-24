@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { completeGoogleRedirect, loginWithGoogle, subscribeToAuth } from "@/lib/auth";
+import { loginWithGoogle, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
+import { getFirebaseAuth } from "@/lib/firebase";
 
 function parseFirebaseError(e: unknown): { code?: string; message?: string } {
   if (e && typeof e === "object") {
@@ -86,12 +87,17 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
     let cancelled = false;
+
     (async () => {
       try {
-        const result = await completeGoogleRedirect();
-        if (!cancelled && result?.user) {
+        await waitForRedirectAndAuthReady();
+        if (cancelled) return;
+        const auth = getFirebaseAuth();
+        if (auth.currentUser) {
           router.replace("/");
+          return;
         }
       } catch (e: unknown) {
         if (!cancelled) {
@@ -99,19 +105,18 @@ export default function LoginPage() {
         }
         console.error(e);
       }
+
+      unsubscribe = subscribeToAuth((user) => {
+        if (user) {
+          router.replace("/");
+        }
+      });
     })();
+
     return () => {
       cancelled = true;
+      unsubscribe?.();
     };
-  }, [router]);
-
-  useEffect(() => {
-    const unsubscribe = subscribeToAuth((user) => {
-      if (user) {
-        router.replace("/");
-      }
-    });
-    return () => unsubscribe();
   }, [router]);
 
   async function handleLogin() {
