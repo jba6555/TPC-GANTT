@@ -1,6 +1,12 @@
 import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { type Firestore, getFirestore, initializeFirestore } from "firebase/firestore";
+import {
+  type Firestore,
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -35,12 +41,23 @@ export function getFirebaseAuth() {
 
 let firestoreSingleton: Firestore | null = null;
 
-/** Long-polling helps when WebChannel hangs behind proxies / some corporate networks (addDoc never resolves). */
+/**
+ * Without `localCache`, initializeFirestore defaults to memory-only — data disappears on refresh
+ * and writes may not durably reach the server. Use IndexedDB + multi-tab sync in the browser.
+ * Long-polling avoids WebChannel hangs on some networks.
+ */
 export function getFirestoreDb(): Firestore {
   if (firestoreSingleton) return firestoreSingleton;
   const app = getFirebaseApp();
+  if (typeof window === "undefined") {
+    firestoreSingleton = getFirestore(app);
+    return firestoreSingleton;
+  }
   try {
     firestoreSingleton = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
       experimentalAutoDetectLongPolling: true,
     });
   } catch {
