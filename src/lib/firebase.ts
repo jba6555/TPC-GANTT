@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { type Firestore, getFirestore, initializeFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -33,6 +33,18 @@ export function getFirebaseAuth() {
   return getAuth(getFirebaseApp());
 }
 
-export function getFirestoreDb() {
-  return getFirestore(getFirebaseApp());
+let firestoreSingleton: Firestore | null = null;
+
+/** Long-polling helps when WebChannel hangs behind proxies / some corporate networks (addDoc never resolves). */
+export function getFirestoreDb(): Firestore {
+  if (firestoreSingleton) return firestoreSingleton;
+  const app = getFirebaseApp();
+  try {
+    firestoreSingleton = initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+    });
+  } catch {
+    firestoreSingleton = getFirestore(app);
+  }
+  return firestoreSingleton;
 }
