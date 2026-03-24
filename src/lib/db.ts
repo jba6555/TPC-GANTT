@@ -43,7 +43,11 @@ export function subscribeToProjects(
           };
         })
         .sort((a, b) => a._createdMs - b._createdMs)
-        .map(({ _createdMs: _, ...project }) => project as Project);
+        .map((row) => {
+          const { _createdMs, ...rest } = row;
+          void _createdMs;
+          return rest as Project;
+        });
       callback(projects);
     },
     (error) => {
