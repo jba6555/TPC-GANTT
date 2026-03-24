@@ -1,65 +1,185 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import ProjectList from "@/components/ProjectList";
+import TaskForm from "@/components/TaskForm";
+import GanttScheduler from "@/components/GanttScheduler";
+import { logout, subscribeToAuth } from "@/lib/auth";
+import {
+  createProject,
+  createTask,
+  subscribeToProjects,
+  subscribeToTasks,
+  updateTaskDates,
+} from "@/lib/db";
+import type { Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
 
 export default function Home() {
+  const [authReady, setAuthReady] = useState(false);
+  const [userId, setUserId] = useState<string>("");
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAuth((user) => {
+      setAuthReady(true);
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+      setUserId(user.uid);
+      setUserEmail(user.email ?? "");
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  useEffect(() => {
+    if (!authReady || !userId) return;
+    const unsubscribe = subscribeToProjects((incoming) => {
+      setProjects(incoming);
+      if (!selectedProjectId && incoming.length > 0) {
+        setSelectedProjectId(incoming[0].id);
+      }
+    });
+    return () => unsubscribe();
+  }, [authReady, userId, selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      return;
+    }
+    const unsubscribe = subscribeToTasks(selectedProjectId, setTasks);
+    return () => unsubscribe();
+  }, [selectedProjectId]);
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId),
+    [projects, selectedProjectId],
+  );
+
+  async function handleAddProject(input: ProjectInput) {
+    await createProject(userId, input);
+  }
+
+  async function handleAddTask(input: TaskInput) {
+    if (!selectedProjectId) return;
+    await createTask(selectedProjectId, input, tasks.length);
+  }
+
+  async function handleSignOut() {
+    await logout();
+    router.replace("/login");
+  }
+
+  async function handleSeedSample() {
+    if (!userId) return;
+    const projectId = await createProject(userId, {
+      name: "3217 Rowena Ave",
+      address: "3217 Rowena Ave",
+      contractStart: "2026-03-13",
+      contractEnd: "2027-01-01",
+    });
+    await createTask(
+      projectId,
+      {
+        title: "Pre-Application due",
+        type: "milestone",
+        dueDate: "2026-05-01",
+      },
+      0,
+    );
+    await createTask(
+      projectId,
+      {
+        title: "Full Application due",
+        type: "milestone",
+        dueDate: "2026-05-15",
+      },
+      1,
+    );
+    await createTask(
+      projectId,
+      {
+        title: "Under Contract",
+        type: "task",
+        startDate: "2026-03-13",
+        dueDate: "2027-01-01",
+      },
+      2,
+    );
+    await createTask(
+      projectId,
+      {
+        title: "Meeting with NCHFA",
+        type: "milestone",
+        dueDate: "2026-06-01",
+      },
+      3,
+    );
+    setSelectedProjectId(projectId);
+  }
+
+  if (!authReady) {
+    return <main className="p-8 text-sm text-zinc-600">Loading...</main>;
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main className="min-h-screen bg-zinc-100 p-4">
+      <header className="mb-4 flex items-center justify-between rounded-lg border border-zinc-200 bg-white p-3">
+        <div>
+          <h1 className="text-xl font-bold text-zinc-900">Real Estate Gantt Scheduler</h1>
+          <p className="text-sm text-zinc-600">{userEmail}</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="rounded bg-zinc-800 px-3 py-1 text-sm text-white"
+        >
+          Sign Out
+        </button>
+      </header>
+
+      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+        <ProjectList
+          projects={projects}
+          selectedProjectId={selectedProjectId}
+          onSelect={setSelectedProjectId}
+          onAddProject={handleAddProject}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        <section className="space-y-3">
+          <div className="rounded-lg border border-zinc-200 bg-white p-3">
+            <h2 className="text-lg font-semibold text-zinc-900">
+              {selectedProject ? selectedProject.name : "Select a project"}
+            </h2>
+            {selectedProject ? (
+              <p className="text-sm text-zinc-600">
+                Contract: {selectedProject.contractStart || "N/A"} to{" "}
+                {selectedProject.contractEnd || "N/A"}
+              </p>
+            ) : (
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-zinc-500">No projects yet. Add one to begin.</p>
+                <button
+                  type="button"
+                  onClick={handleSeedSample}
+                  className="rounded bg-blue-600 px-2 py-1 text-xs text-white"
+                >
+                  Seed Example Project
+                </button>
+              </div>
+            )}
+          </div>
+
+          {selectedProject && <TaskForm onAddTask={handleAddTask} />}
+          {selectedProject && (
+            <GanttScheduler tasks={tasks} onUpdateTaskDates={updateTaskDates} />
+          )}
+        </section>
+      </div>
+    </main>
   );
 }

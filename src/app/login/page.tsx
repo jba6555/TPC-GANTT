@@ -1,0 +1,151 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { completeGoogleRedirect, loginWithGoogle, subscribeToAuth } from "@/lib/auth";
+
+function parseFirebaseError(e: unknown): { code?: string; message?: string } {
+  if (e && typeof e === "object") {
+    const o = e as { code?: string; message?: string };
+    return { code: o.code, message: o.message };
+  }
+  return {};
+}
+
+function formatAuthError(e: unknown, pageOrigin: string): string {
+  const { code, message } = parseFirebaseError(e);
+  const host = (() => {
+    try {
+      return new URL(pageOrigin).hostname;
+    } catch {
+      return "localhost";
+    }
+  })();
+
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "YOUR_PROJECT_ID";
+  const firebaseHandler = `https://${projectId}.firebaseapp.com/__/auth/handler`;
+  const localHandler =
+    pageOrigin && pageOrigin.startsWith("http")
+      ? `${pageOrigin.replace(/\/$/, "")}/__/auth/handler`
+      : "http://localhost:3000/__/auth/handler";
+
+  switch (code) {
+    case "auth/configuration-not-found":
+      return [
+        "Firebase Auth OAuth is not fully wired (configuration-not-found).",
+        "",
+        "A) Firebase → Authentication → Sign-in method → Google → Enabled.",
+        "   Expand “Web SDK configuration” and set Web client ID + Web client secret",
+        "   to the SAME OAuth “Web client” in Google Cloud (Credentials).",
+        "   If you created a new client (e.g. “TPC Gantt 1”), paste that client’s ID/secret here.",
+        "   Mismatch between Firebase Google settings and GCP OAuth client causes this error.",
+        "",
+        "B) Google Cloud → Credentials → that Web client:",
+        `   • Authorized redirect URIs must include: ${firebaseHandler}`,
+        "     plus http://localhost:3000/__/auth/handler (and :3001, :3002 if you use those ports).",
+        "   • Authorized JavaScript origins must list EVERY port you use:",
+        "     http://localhost:3000, http://localhost:3001, http://localhost:3002",
+        "     (Redirect URIs alone are not enough — JS origin must match the address bar.)",
+        "",
+        `Try from the origin you whitelisted (e.g. ${localHandler.replace("/__/auth/handler", "")}).`,
+        "",
+        "C) Google Cloud → Library — enable Identity Toolkit API (and Google Identity if listed).",
+        "",
+        "Note: Google says OAuth changes can take several minutes to apply.",
+      ].join("\n");
+    case "auth/unauthorized-domain":
+      return `This origin is not allowed for Firebase Auth. Firebase Console → Authentication → Settings → Authorized domains → add "${host}" (for local dev, "localhost" is usually enough; save and retry).`;
+    case "auth/operation-not-allowed":
+      return "Google sign-in is disabled. Firebase Console → Authentication → Sign-in method → enable Google.";
+    case "auth/popup-blocked":
+    case "auth/popup-closed-by-user":
+      return "Sign-in was cancelled. Try again.";
+    default: {
+      const detail = [code && `Code: ${code}`, message && message !== code && message].filter(Boolean).join(" · ");
+      return [
+        "Sign-in failed.",
+        detail || "Unknown error.",
+        "",
+        `Add this exact line under Google Cloud Console → APIs & Services → Credentials → your Web client → Authorized JavaScript origins:`,
+        pageOrigin || "http://localhost:3000",
+        "",
+        `Use the same port as in your browser address bar (e.g. :3001 if Next chose another port).`,
+      ].join("\n");
+    }
+  }
+}
+
+export default function LoginPage() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [origin, setOrigin] = useState("");
+  const router = useRouter();
+
+  useEffect(() => {
+    setOrigin(typeof window !== "undefined" ? window.location.origin : "");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await completeGoogleRedirect();
+        if (!cancelled && result?.user) {
+          router.replace("/");
+        }
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setError(formatAuthError(e, typeof window !== "undefined" ? window.location.origin : ""));
+        }
+        console.error(e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAuth((user) => {
+      if (user) {
+        router.replace("/");
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  async function handleLogin() {
+    setError(null);
+    setLoading(true);
+    try {
+      await loginWithGoogle();
+      // Browser navigates away to Google; code below usually does not run.
+    } catch (loginError: unknown) {
+      setError(formatAuthError(loginError, origin || (typeof window !== "undefined" ? window.location.origin : "")));
+      console.error(loginError);
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-zinc-100 p-6">
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-sm">
+        <h1 className="mb-2 text-2xl font-bold text-zinc-900">Real Estate Scheduler</h1>
+        <p className="mb-4 text-sm text-zinc-600">Sign in using your Google ID to continue.</p>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={handleLogin}
+          className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+        >
+          {loading ? "Signing In..." : "Sign in with Google"}
+        </button>
+        {error && (
+          <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-red-50 p-3 text-left text-xs text-red-800">
+            {error}
+          </pre>
+        )}
+      </div>
+    </main>
+  );
+}
