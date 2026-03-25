@@ -9,8 +9,9 @@ import { logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth
 import {
   createProject,
   createTask,
+  deleteProjectAndTasks,
   subscribeToProjects,
-  subscribeToTasks,
+  subscribeToAllTasks,
   updateTaskDates,
 } from "@/lib/db";
 import type { Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
@@ -21,7 +22,7 @@ export default function Home() {
   const [userEmail, setUserEmail] = useState<string>("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
-  const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const [allTasks, setAllTasks] = useState<ProjectTask[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -57,25 +58,33 @@ export default function Home() {
     if (!authReady || !userId) return;
     const unsubscribe = subscribeToProjects((incoming) => {
       setProjects(incoming);
-      if (!selectedProjectId && incoming.length > 0) {
-        setSelectedProjectId(incoming[0].id);
+      const stillExists = selectedProjectId
+        ? incoming.some((p) => p.id === selectedProjectId)
+        : false;
+      if (!stillExists) {
+        setSelectedProjectId(incoming[0]?.id ?? "");
       }
     });
     return () => unsubscribe();
   }, [authReady, userId, selectedProjectId]);
 
   useEffect(() => {
-    if (!selectedProjectId) {
-      return;
-    }
-    const unsubscribe = subscribeToTasks(selectedProjectId, setTasks);
+    if (!authReady || !userId) return;
+    const unsubscribe = subscribeToAllTasks(setAllTasks);
     return () => unsubscribe();
-  }, [selectedProjectId]);
+  }, [authReady, userId]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId),
     [projects, selectedProjectId],
   );
+
+  const selectedTasks = useMemo(() => {
+    return allTasks
+      .filter((t) => t.projectId === selectedProjectId)
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [allTasks, selectedProjectId]);
 
   async function handleAddProject(input: ProjectInput) {
     await createProject(userId, input);
@@ -83,7 +92,14 @@ export default function Home() {
 
   async function handleAddTask(input: TaskInput) {
     if (!selectedProjectId) return;
-    await createTask(selectedProjectId, input, tasks.length);
+    await createTask(selectedProjectId, input, selectedTasks.length);
+  }
+
+  async function handleDeleteProject(projectId: string) {
+    await deleteProjectAndTasks(projectId);
+    if (selectedProjectId === projectId) {
+      setSelectedProjectId("");
+    }
   }
 
   async function handleSignOut() {
@@ -165,6 +181,7 @@ export default function Home() {
           selectedProjectId={selectedProjectId}
           onSelect={setSelectedProjectId}
           onAddProject={handleAddProject}
+          onDeleteProject={handleDeleteProject}
         />
         <section className="space-y-3">
           <div className="rounded-lg border border-zinc-200 bg-white p-3">
@@ -192,7 +209,11 @@ export default function Home() {
 
           {selectedProject && <TaskForm onAddTask={handleAddTask} />}
           {selectedProject && (
-            <GanttScheduler tasks={tasks} onUpdateTaskDates={updateTaskDates} />
+            <GanttScheduler
+              projects={projects}
+              tasks={allTasks}
+              onUpdateTaskDates={updateTaskDates}
+            />
           )}
         </section>
       </div>

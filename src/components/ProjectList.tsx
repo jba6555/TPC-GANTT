@@ -13,6 +13,7 @@ interface ProjectListProps {
     contractStart?: string;
     contractEnd?: string;
   }) => Promise<void>;
+  onDeleteProject: (projectId: string) => Promise<void>;
 }
 
 export default function ProjectList({
@@ -20,6 +21,7 @@ export default function ProjectList({
   selectedProjectId,
   onSelect,
   onAddProject,
+  onDeleteProject,
 }: ProjectListProps) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -28,6 +30,8 @@ export default function ProjectList({
   const [contractEnd, setContractEnd] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -121,21 +125,51 @@ export default function ProjectList({
       <ul className="space-y-2">
         {projects.map((project) => (
           <li key={project.id}>
-            <button
-              type="button"
-              onClick={() => onSelect(project.id)}
-              className={`w-full rounded border px-3 py-2 text-left text-sm ${
-                selectedProjectId === project.id
-                  ? "border-blue-500 bg-blue-50"
-                  : "border-zinc-200 hover:bg-zinc-50"
-              }`}
-            >
-              <p className="font-medium text-zinc-900">{project.name}</p>
-              {project.address && <p className="text-zinc-500">{project.address}</p>}
-            </button>
+            <div className="rounded border border-zinc-200 bg-white">
+              <button
+                type="button"
+                onClick={() => onSelect(project.id)}
+                className={`w-full px-3 py-2 text-left text-sm ${
+                  selectedProjectId === project.id ? "bg-blue-50" : "hover:bg-zinc-50"
+                }`}
+              >
+                <p className="font-medium text-zinc-900">{project.name}</p>
+                {project.address && <p className="text-zinc-500">{project.address}</p>}
+              </button>
+
+              <div className="flex items-center gap-2 border-t border-zinc-200 px-3 py-2">
+                <button
+                  type="button"
+                  disabled={deletingProjectId === project.id}
+                  onClick={async () => {
+                    const ok = window.confirm(
+                      `Delete project "${project.name}"? This will also delete all its tasks.`,
+                    );
+                    if (!ok) return;
+                    setDeleteError(null);
+                    setDeletingProjectId(project.id);
+                    try {
+                      await onDeleteProject(project.id);
+                    } catch (e: unknown) {
+                      const msg =
+                        e && typeof e === "object" && "message" in e ? String((e as { message?: string }).message) : "";
+                      setDeleteError(msg || "Could not delete project.");
+                      console.error(e);
+                    } finally {
+                      setDeletingProjectId(null);
+                    }
+                  }}
+                  className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-60"
+                >
+                  {deletingProjectId === project.id ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
           </li>
         ))}
       </ul>
+
+      {deleteError && <p className="mt-3 text-xs text-red-600">{deleteError}</p>}
     </aside>
   );
 }

@@ -2,9 +2,10 @@
 
 import dayjs from "dayjs";
 import { useMemo, useRef, useState } from "react";
-import type { ProjectTask } from "@/types/scheduler";
+import type { Project, ProjectTask } from "@/types/scheduler";
 
 interface GanttSchedulerProps {
+  projects: Project[];
   tasks: ProjectTask[];
   onUpdateTaskDates: (taskId: string, startDate?: string, dueDate?: string) => Promise<void>;
 }
@@ -13,7 +14,7 @@ type DragMode = "move" | "resizeStart" | "resizeEnd";
 
 const DAY_WIDTH = 28;
 
-export default function GanttScheduler({ tasks, onUpdateTaskDates }: GanttSchedulerProps) {
+export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: GanttSchedulerProps) {
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -91,9 +92,23 @@ export default function GanttScheduler({ tasks, onUpdateTaskDates }: GanttSchedu
     window.addEventListener("pointerup", onUp);
   }
 
+  const tasksByProject = useMemo(() => {
+    const map = new Map<string, ProjectTask[]>();
+    for (const task of tasks) {
+      const arr = map.get(task.projectId) ?? [];
+      arr.push(task);
+      map.set(task.projectId, arr);
+    }
+    for (const [key, arr] of map.entries()) {
+      arr.sort((a, b) => a.sortOrder - b.sortOrder);
+      map.set(key, arr);
+    }
+    return map;
+  }, [tasks]);
+
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-3">
-      <h3 className="mb-2 text-base font-semibold text-zinc-900">Gantt Timeline</h3>
+      <h3 className="mb-2 text-base font-semibold text-zinc-900">Gantt Timeline (All Projects)</h3>
       <div className="overflow-auto" ref={viewportRef}>
         <div className="min-w-[900px]">
           <div className="sticky top-0 grid grid-cols-[280px_1fr] bg-white">
@@ -113,46 +128,66 @@ export default function GanttScheduler({ tasks, onUpdateTaskDates }: GanttSchedu
             </div>
           </div>
 
-          {tasks.map((task) => {
-            const start = dayjs(task.startDate || task.dueDate);
-            const due = dayjs(task.dueDate);
-            const left = start.diff(chartStart, "day") * DAY_WIDTH;
-            const width = Math.max(due.diff(start, "day") + 1, 1) * DAY_WIDTH;
+          {projects.map((project) => {
+            const projectTasks = tasksByProject.get(project.id) ?? [];
             return (
-              <div key={task.id} className="grid grid-cols-[280px_1fr] border-b border-zinc-100">
-                <div className="p-2 text-sm">
-                  <p className="font-medium text-zinc-900">{task.title}</p>
-                  <p className="text-xs text-zinc-500">
-                    {start.format("MMM D")} - {due.format("MMM D, YYYY")}
-                  </p>
-                </div>
-                <div className="relative h-12 bg-[linear-gradient(to_right,#f4f4f5_1px,transparent_1px)] bg-[length:28px_100%]">
-                  <div
-                    data-task-id={task.id}
-                    className={`absolute top-2 flex h-8 items-center rounded ${
-                      dragTaskId === task.id ? "bg-blue-700" : "bg-blue-600"
-                    } text-white ${pending === task.id ? "opacity-60" : ""}`}
-                    style={{ left, width }}
-                  >
-                    <button
-                      type="button"
-                      onPointerDown={(e) => handlePointerDown(e, task, "resizeStart")}
-                      className="h-full w-2 cursor-ew-resize rounded-l bg-blue-800"
-                    />
-                    <button
-                      type="button"
-                      onPointerDown={(e) => handlePointerDown(e, task, "move")}
-                      className="h-full flex-1 cursor-grab px-2 text-left text-xs"
-                    >
-                      {task.title}
-                    </button>
-                    <button
-                      type="button"
-                      onPointerDown={(e) => handlePointerDown(e, task, "resizeEnd")}
-                      className="h-full w-2 cursor-ew-resize rounded-r bg-blue-800"
-                    />
+              <div key={project.id}>
+                <div className="grid grid-cols-[280px_1fr] border-b border-zinc-200 bg-zinc-50">
+                  <div className="p-2">
+                    <p className="font-semibold text-zinc-900">{project.name}</p>
+                    {project.address ? (
+                      <p className="text-xs text-zinc-500">{project.address}</p>
+                    ) : (
+                      <p className="text-xs text-zinc-400">No address</p>
+                    )}
                   </div>
+                  <div className="h-10" />
                 </div>
+
+                {projectTasks.map((task) => {
+                  const start = dayjs(task.startDate || task.dueDate);
+                  const due = dayjs(task.dueDate);
+                  const left = start.diff(chartStart, "day") * DAY_WIDTH;
+                  const width = Math.max(due.diff(start, "day") + 1, 1) * DAY_WIDTH;
+
+                  return (
+                    <div key={task.id} className="grid grid-cols-[280px_1fr] border-b border-zinc-100">
+                      <div className="p-2 text-sm">
+                        <p className="font-medium text-zinc-900">{task.title}</p>
+                        <p className="text-xs text-zinc-500">
+                          {start.format("MMM D")} - {due.format("MMM D, YYYY")}
+                        </p>
+                      </div>
+                      <div className="relative h-12 bg-[linear-gradient(to_right,#f4f4f5_1px,transparent_1px)] bg-[length:28px_100%]">
+                        <div
+                          data-task-id={task.id}
+                          className={`absolute top-2 flex h-8 items-center rounded ${
+                            dragTaskId === task.id ? "bg-blue-700" : "bg-blue-600"
+                          } text-white ${pending === task.id ? "opacity-60" : ""}`}
+                          style={{ left, width }}
+                        >
+                          <button
+                            type="button"
+                            onPointerDown={(e) => handlePointerDown(e, task, "resizeStart")}
+                            className="h-full w-2 cursor-ew-resize rounded-l bg-blue-800"
+                          />
+                          <button
+                            type="button"
+                            onPointerDown={(e) => handlePointerDown(e, task, "move")}
+                            className="h-full flex-1 cursor-grab px-2 text-left text-xs"
+                          >
+                            {task.title}
+                          </button>
+                          <button
+                            type="button"
+                            onPointerDown={(e) => handlePointerDown(e, task, "resizeEnd")}
+                            className="h-full w-2 cursor-ew-resize rounded-r bg-blue-800"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}

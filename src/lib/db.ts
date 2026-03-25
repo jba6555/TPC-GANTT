@@ -2,6 +2,8 @@ import {
   addDoc,
   collection,
   doc,
+  deleteDoc,
+  getDocs,
   onSnapshot,
   query,
   serverTimestamp,
@@ -92,6 +94,40 @@ export function subscribeToTasks(
   );
 }
 
+export function subscribeToAllTasks(
+  callback: (tasks: ProjectTask[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const tasksCollection = tasksCollectionRef();
+  return onSnapshot(
+    tasksCollection,
+    (snapshot) => {
+      const tasks = snapshot.docs
+        .map((taskDoc) => {
+          const data = taskDoc.data();
+          return {
+            id: taskDoc.id,
+            projectId: data.projectId ?? "",
+            title: data.title ?? "",
+            type: data.type ?? "task",
+            startDate: data.startDate,
+            dueDate: data.dueDate ?? new Date().toISOString().slice(0, 10),
+            status: data.status ?? "not_started",
+            sortOrder: data.sortOrder ?? 0,
+            notes: data.notes,
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
+          } as ProjectTask;
+        })
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      callback(tasks);
+    },
+    (error) => {
+      console.error("[Firestore] tasks(all) listener:", error);
+      onError?.(error);
+    },
+  );
+}
+
 export async function createProject(userId: string, input: ProjectInput) {
   const docRef = await addDoc(projectsCollectionRef(), {
     ...input,
@@ -123,4 +159,18 @@ export async function updateTaskDates(taskId: string, startDate?: string, dueDat
     patch.dueDate = dueDate;
   }
   await updateDoc(taskRef, patch);
+}
+
+export async function deleteProjectAndTasks(projectId: string) {
+  const db = getFirestoreDb();
+  const projectRef = doc(db, "projects", projectId);
+
+  // Delete all tasks belonging to this project.
+  const tasksSnap = await getDocs(
+    query(tasksCollectionRef(), where("projectId", "==", projectId)),
+  );
+  await Promise.all(tasksSnap.docs.map((d) => deleteDoc(d.ref)));
+
+  // Delete the project last.
+  await deleteDoc(projectRef);
 }
