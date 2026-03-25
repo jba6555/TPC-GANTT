@@ -35,7 +35,9 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     task: ProjectTask,
     mode: DragMode,
   ) {
+    event.preventDefault();
     const startX = event.clientX;
+    const pointerId = event.pointerId;
     const originalStart = dayjs(task.startDate || task.dueDate);
     const originalDue = dayjs(task.dueDate);
     setDragTaskId(task.id);
@@ -64,7 +66,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
       row.style.width = `${Math.max(nextDue.diff(nextStart, "day") + 1, 1) * DAY_WIDTH}px`;
     };
 
-    const onUp = async (upEvent: PointerEvent) => {
+    const onUp = (upEvent: PointerEvent) => {
       const deltaX = upEvent.clientX - startX;
       const dayDelta = Math.round(deltaX / DAY_WIDTH);
       let nextStart = originalStart;
@@ -80,16 +82,31 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         if (nextDue.isBefore(nextStart)) nextDue = nextStart;
       }
 
-      setPending(task.id);
-      await onUpdateTaskDates(task.id, nextStart.format("YYYY-MM-DD"), nextDue.format("YYYY-MM-DD"));
-      setPending(null);
       setDragTaskId(null);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+
+      // Firestore persistence can be slow/unreliable on some networks;
+      // drag end should be immediate even if the save is pending.
+      const nextStartStr = nextStart.format("YYYY-MM-DD");
+      const nextDueStr = nextDue.format("YYYY-MM-DD");
+      setPending(task.id);
+      void onUpdateTaskDates(task.id, nextStartStr, nextDueStr)
+        .catch((e) => {
+          console.error(e);
+        })
+        .finally(() => setPending(null));
     };
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+
+    // Capture pointer so we keep receiving events even if the cursor leaves the button.
+    try {
+      (event.currentTarget as HTMLElement).setPointerCapture(pointerId);
+    } catch {
+      // Ignore if not supported.
+    }
   }
 
   const tasksByProject = useMemo(() => {
