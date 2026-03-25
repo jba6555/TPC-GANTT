@@ -17,6 +17,7 @@ import {
 import type { Project, ProjectInput, ProjectTask } from "@/types/scheduler";
 
 export default function Home() {
+  const APP_VERSION = "d4d0819";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -179,6 +180,7 @@ export default function Home() {
         <div>
           <h1 className="text-xl font-bold text-zinc-900">Real Estate Gantt Scheduler</h1>
           <p className="text-sm text-zinc-600">{userEmail}</p>
+          <p className="text-xs text-zinc-400">Version: {APP_VERSION}</p>
         </div>
         <button
           type="button"
