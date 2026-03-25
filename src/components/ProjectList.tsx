@@ -360,14 +360,28 @@ export default function ProjectList({
                 if (!taskStartDate || !taskDueDate) return;
                 setTaskError(null);
                 setTaskSaving(true);
-                const safety = window.setTimeout(() => setTaskSaving(false), 5000);
-                void onAddTask(taskModalProjectId, {
+                const projectId = taskModalProjectId;
+                let didTimeout = false;
+                const safety = window.setTimeout(() => {
+                  didTimeout = true;
+                  setTaskModalProjectId(null);
+                  setTaskSaving(false);
+                  setTaskError(null);
+                  setTaskTitle("");
+                  setTaskStartDate("");
+                  setTaskDueDate("");
+                  setTaskNotes("");
+                }, 4000);
+
+                void onAddTask(projectId, {
                   title: taskTitle.trim(),
                   startDate: taskStartDate,
                   dueDate: taskDueDate,
                   notes: taskNotes.trim() || undefined,
                 })
                   .then(() => {
+                    if (didTimeout) return;
+                    window.clearTimeout(safety);
                     setTaskModalProjectId(null);
                     setTaskTitle("");
                     setTaskStartDate("");
@@ -376,6 +390,7 @@ export default function ProjectList({
                     setTaskError(null);
                   })
                   .catch((err: unknown) => {
+                    if (didTimeout) return;
                     const message =
                       err && typeof err === "object" && "message" in err
                         ? String((err as { message?: string }).message)
@@ -384,6 +399,7 @@ export default function ProjectList({
                     console.error(err);
                   })
                   .finally(() => {
+                    if (didTimeout) return;
                     window.clearTimeout(safety);
                     setTaskSaving(false);
                   });
