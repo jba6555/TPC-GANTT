@@ -12,6 +12,7 @@ import {
   deleteProjectAndTasks,
   subscribeToProjects,
   subscribeToAllTasks,
+  updateProject,
   updateTaskDates,
 } from "@/lib/db";
 import type { Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
@@ -102,6 +103,13 @@ export default function Home() {
     }
   }
 
+  async function handleUpdateProject(
+    projectId: string,
+    input: ProjectInput,
+  ) {
+    await updateProject(projectId, input);
+  }
+
   async function handleSignOut() {
     await logout();
     router.replace("/login");
@@ -182,6 +190,7 @@ export default function Home() {
           onSelect={setSelectedProjectId}
           onAddProject={handleAddProject}
           onDeleteProject={handleDeleteProject}
+          onUpdateProject={handleUpdateProject}
         />
         <section className="space-y-3">
           <div className="rounded-lg border border-zinc-200 bg-white p-3">

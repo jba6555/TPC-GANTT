@@ -14,6 +14,12 @@ interface ProjectListProps {
     contractEnd?: string;
   }) => Promise<void>;
   onDeleteProject: (projectId: string) => Promise<void>;
+  onUpdateProject: (projectId: string, input: {
+    name: string;
+    address: string;
+    contractStart?: string;
+    contractEnd?: string;
+  }) => Promise<void>;
 }
 
 export default function ProjectList({
@@ -22,6 +28,7 @@ export default function ProjectList({
   onSelect,
   onAddProject,
   onDeleteProject,
+  onUpdateProject,
 }: ProjectListProps) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -32,6 +39,14 @@ export default function ProjectList({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+  const [editContractStart, setEditContractStart] = useState("");
+  const [editContractEnd, setEditContractEnd] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -138,6 +153,7 @@ export default function ProjectList({
               </button>
 
               <div className="flex items-center gap-2 border-t border-zinc-200 px-3 py-2">
+                {editingProjectId !== project.id ? (
                 <button
                   type="button"
                   disabled={deletingProjectId === project.id}
@@ -163,8 +179,108 @@ export default function ProjectList({
                 >
                   {deletingProjectId === project.id ? "Deleting..." : "Delete"}
                 </button>
+                ) : null}
+
+                {editingProjectId !== project.id ? (
+                  <button
+                    type="button"
+                    disabled={deletingProjectId === project.id}
+                    onClick={() => {
+                      setEditError(null);
+                      setSavingEdit(false);
+                      setEditingProjectId(project.id);
+                      setEditName(project.name ?? "");
+                      setEditAddress(project.address ?? "");
+                      setEditContractStart(project.contractStart ?? "");
+                      setEditContractEnd(project.contractEnd ?? "");
+                    }}
+                    className="rounded bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-60"
+                  >
+                    Edit
+                  </button>
+                ) : null}
               </div>
             </div>
+
+            {editingProjectId === project.id && (
+              <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setEditError(null);
+                    setSavingEdit(true);
+                    void onUpdateProject(project.id, {
+                      name: editName.trim(),
+                      address: editAddress.trim(),
+                      contractStart: editContractStart || undefined,
+                      contractEnd: editContractEnd || undefined,
+                    })
+                      .then(() => {
+                        setEditingProjectId(null);
+                        setEditError(null);
+                      })
+                      .catch((err: unknown) => {
+                        const message =
+                          err && typeof err === "object" && "message" in err
+                            ? String((err as { message?: string }).message)
+                            : "";
+                        setEditError(message || "Could not save project changes.");
+                        console.error(err);
+                      })
+                      .finally(() => setSavingEdit(false));
+                  }}
+                  className="space-y-2"
+                >
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Project name"
+                    className="w-full rounded border px-2 py-1 text-sm"
+                    required
+                  />
+                  <input
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                    placeholder="Address"
+                    className="w-full rounded border px-2 py-1 text-sm"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={editContractStart}
+                      onChange={(e) => setEditContractStart(e.target.value)}
+                      className="w-full rounded border px-2 py-1 text-sm"
+                    />
+                    <input
+                      type="date"
+                      value={editContractEnd}
+                      onChange={(e) => setEditContractEnd(e.target.value)}
+                      className="w-full rounded border px-2 py-1 text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={savingEdit}
+                      className="flex-1 rounded bg-zinc-900 py-1 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                      {savingEdit ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingProjectId(null);
+                        setEditError(null);
+                      }}
+                      className="rounded bg-zinc-100 py-1 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {editError && <p className="text-xs text-red-600">{editError}</p>}
+                </form>
+              </div>
+            )}
           </li>
         ))}
       </ul>

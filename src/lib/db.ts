@@ -174,3 +174,16 @@ export async function deleteProjectAndTasks(projectId: string) {
   // Delete the project last.
   await deleteDoc(projectRef);
 }
+
+export async function updateProject(projectId: string, input: ProjectInput) {
+  const db = getFirestoreDb();
+  const projectRef = doc(db, "projects", projectId);
+  const patch: Partial<ProjectInput> = {
+    name: input.name,
+    address: input.address,
+  };
+  if (input.contractStart) patch.contractStart = input.contractStart;
+  if (input.contractEnd) patch.contractEnd = input.contractEnd;
+
+  await updateDoc(projectRef, patch);
+}
