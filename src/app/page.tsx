@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ProjectList from "@/components/ProjectList";
-import TaskForm from "@/components/TaskForm";
 import GanttScheduler from "@/components/GanttScheduler";
 import { logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
 import {
@@ -15,7 +14,7 @@ import {
   updateProject,
   updateTaskDates,
 } from "@/lib/db";
-import type { Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
+import type { Project, ProjectInput, ProjectTask } from "@/types/scheduler";
 
 export default function Home() {
   const [authReady, setAuthReady] = useState(false);
@@ -80,20 +79,27 @@ export default function Home() {
     [projects, selectedProjectId],
   );
 
-  const selectedTasks = useMemo(() => {
-    return allTasks
-      .filter((t) => t.projectId === selectedProjectId)
-      .slice()
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [allTasks, selectedProjectId]);
-
   async function handleAddProject(input: ProjectInput) {
     await createProject(userId, input);
   }
 
-  async function handleAddTask(input: TaskInput) {
-    if (!selectedProjectId) return;
-    await createTask(selectedProjectId, input, selectedTasks.length);
+  async function handleAddTaskForProject(
+    projectId: string,
+    input: {
+      title: string;
+      startDate: string;
+      dueDate: string;
+      notes?: string;
+    },
+  ) {
+    const sortOrder = allTasks.filter((t) => t.projectId === projectId).length;
+    await createTask(projectId, {
+      title: input.title,
+      type: "task",
+      startDate: input.startDate,
+      dueDate: input.dueDate,
+      notes: input.notes,
+    }, sortOrder);
   }
 
   async function handleDeleteProject(projectId: string) {
@@ -191,6 +197,7 @@ export default function Home() {
           onAddProject={handleAddProject}
           onDeleteProject={handleDeleteProject}
           onUpdateProject={handleUpdateProject}
+          onAddTask={handleAddTaskForProject}
         />
         <section className="space-y-3">
           <div className="rounded-lg border border-zinc-200 bg-white p-3">
@@ -216,7 +223,6 @@ export default function Home() {
             )}
           </div>
 
-          {selectedProject && <TaskForm onAddTask={handleAddTask} />}
           {selectedProject && (
             <GanttScheduler
               projects={projects}

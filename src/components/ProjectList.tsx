@@ -20,6 +20,12 @@ interface ProjectListProps {
     contractStart?: string;
     contractEnd?: string;
   }) => Promise<void>;
+  onAddTask: (projectId: string, input: {
+    title: string;
+    startDate: string;
+    dueDate: string;
+    notes?: string;
+  }) => Promise<void>;
 }
 
 export default function ProjectList({
@@ -29,6 +35,7 @@ export default function ProjectList({
   onAddProject,
   onDeleteProject,
   onUpdateProject,
+  onAddTask,
 }: ProjectListProps) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -47,6 +54,14 @@ export default function ProjectList({
   const [editContractEnd, setEditContractEnd] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  const [taskModalProjectId, setTaskModalProjectId] = useState<string | null>(null);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskStartDate, setTaskStartDate] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskNotes, setTaskNotes] = useState("");
+  const [taskSaving, setTaskSaving] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -186,6 +201,25 @@ export default function ProjectList({
                     type="button"
                     disabled={deletingProjectId === project.id}
                     onClick={() => {
+                      setTaskError(null);
+                      setTaskSaving(false);
+                      setTaskModalProjectId(project.id);
+                      setTaskTitle("");
+                      setTaskStartDate("");
+                      setTaskDueDate("");
+                      setTaskNotes("");
+                    }}
+                    className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    + Task
+                  </button>
+                ) : null}
+
+                {editingProjectId !== project.id ? (
+                  <button
+                    type="button"
+                    disabled={deletingProjectId === project.id}
+                    onClick={() => {
                       setEditError(null);
                       setSavingEdit(false);
                       setEditingProjectId(project.id);
@@ -286,6 +320,146 @@ export default function ProjectList({
       </ul>
 
       {deleteError && <p className="mt-3 text-xs text-red-600">{deleteError}</p>}
+
+      {taskModalProjectId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setTaskModalProjectId(null);
+              setTaskError(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-zinc-900">Add Task</h3>
+                <p className="text-sm text-zinc-600">
+                  {projects.find((p) => p.id === taskModalProjectId)?.name ?? "Project"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTaskModalProjectId(null);
+                  setTaskError(null);
+                }}
+                className="rounded px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!taskTitle.trim()) return;
+                if (!taskStartDate || !taskDueDate) return;
+                setTaskError(null);
+                setTaskSaving(true);
+                const safety = window.setTimeout(() => setTaskSaving(false), 5000);
+                void onAddTask(taskModalProjectId, {
+                  title: taskTitle.trim(),
+                  startDate: taskStartDate,
+                  dueDate: taskDueDate,
+                  notes: taskNotes.trim() || undefined,
+                })
+                  .then(() => {
+                    setTaskModalProjectId(null);
+                    setTaskTitle("");
+                    setTaskStartDate("");
+                    setTaskDueDate("");
+                    setTaskNotes("");
+                    setTaskError(null);
+                  })
+                  .catch((err: unknown) => {
+                    const message =
+                      err && typeof err === "object" && "message" in err
+                        ? String((err as { message?: string }).message)
+                        : "";
+                    setTaskError(message || "Could not add task.");
+                    console.error(err);
+                  })
+                  .finally(() => {
+                    window.clearTimeout(safety);
+                    setTaskSaving(false);
+                  });
+              }}
+              className="space-y-3"
+            >
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700">Task Title</label>
+                <input
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  required
+                  className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-zinc-700">Start Date</label>
+                  <input
+                    type="date"
+                    value={taskStartDate}
+                    onChange={(e) => setTaskStartDate(e.target.value)}
+                    required
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-zinc-700">Complete Date</label>
+                  <input
+                    type="date"
+                    value={taskDueDate}
+                    onChange={(e) => setTaskDueDate(e.target.value)}
+                    required
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700">Notes</label>
+                <textarea
+                  value={taskNotes}
+                  onChange={(e) => setTaskNotes(e.target.value)}
+                  placeholder="Optional notes"
+                  className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  rows={3}
+                />
+              </div>
+
+              {taskError && <p className="text-xs text-red-600">{taskError}</p>}
+
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={taskSaving}
+                  className="flex-1 rounded bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {taskSaving ? "Adding..." : "Add Task"}
+                </button>
+                <button
+                  type="button"
+                  disabled={taskSaving}
+                  onClick={() => {
+                    setTaskModalProjectId(null);
+                    setTaskError(null);
+                  }}
+                  className="rounded bg-zinc-100 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
