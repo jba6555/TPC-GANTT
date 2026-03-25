@@ -172,23 +172,42 @@ export default function ProjectList({
                 <button
                   type="button"
                   disabled={deletingProjectId === project.id}
-                  onClick={async () => {
+                  onClick={() => {
                     const ok = window.confirm(
                       `Delete project "${project.name}"? This will also delete all its tasks.`,
                     );
                     if (!ok) return;
+
+                    const projectId = project.id;
                     setDeleteError(null);
-                    setDeletingProjectId(project.id);
-                    try {
-                      await onDeleteProject(project.id);
-                    } catch (e: unknown) {
-                      const msg =
-                        e && typeof e === "object" && "message" in e ? String((e as { message?: string }).message) : "";
-                      setDeleteError(msg || "Could not delete project.");
-                      console.error(e);
-                    } finally {
+                    setDeletingProjectId(projectId);
+
+                    let didTimeout = false;
+                    const safety = window.setTimeout(() => {
+                      didTimeout = true;
                       setDeletingProjectId(null);
-                    }
+                      setDeleteError("Delete is taking longer than expected. It will disappear once Firestore finishes.");
+                    }, 4000);
+
+                    void onDeleteProject(projectId)
+                      .then(() => {
+                        if (didTimeout) return;
+                        setDeleteError(null);
+                      })
+                      .catch((e: unknown) => {
+                        if (didTimeout) return;
+                        const msg =
+                          e && typeof e === "object" && "message" in e
+                            ? String((e as { message?: string }).message)
+                            : "";
+                        setDeleteError(msg || "Could not delete project.");
+                        console.error(e);
+                      })
+                      .finally(() => {
+                        if (didTimeout) return;
+                        window.clearTimeout(safety);
+                        setDeletingProjectId(null);
+                      });
                   }}
                   className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-60"
                 >
