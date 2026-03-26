@@ -49,6 +49,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const dragOccurredRef = useRef(false);
   const [zoom, setZoom] = useState<ZoomLevel>("week");
   const hasScrolledToToday = useRef(false);
+  const scrollFractionRef = useRef<number | null>(null);
 
   const todayMarkerRef = useCallback((node: HTMLDivElement | null) => {
     if (!node || hasScrolledToToday.current) return;
@@ -63,6 +64,11 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
+    e.stopPropagation();
+    const el = viewportRef.current;
+    if (el && el.scrollWidth > el.clientWidth) {
+      scrollFractionRef.current = el.scrollLeft / (el.scrollWidth - el.clientWidth);
+    }
     setZoom((prev) => {
       const idx = ZOOM_KEYS.indexOf(prev);
       if (e.deltaY > 0 && idx < ZOOM_KEYS.length - 1) return ZOOM_KEYS[idx + 1];
@@ -77,6 +83,19 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);
+
+  useEffect(() => {
+    if (scrollFractionRef.current === null) return;
+    const el = viewportRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (maxScroll > 0) {
+        el.scrollLeft = scrollFractionRef.current! * maxScroll;
+      }
+      scrollFractionRef.current = null;
+    });
+  }, [zoom]);
 
   const { chartStart, chartEnd, pxPerDay, columns, groupHeaders, gridLinePx } = useMemo(() => {
     const config = ZOOM_LEVELS.find((z) => z.key === zoom)!;
