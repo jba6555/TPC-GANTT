@@ -71,9 +71,13 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     const config = ZOOM_LEVELS.find((z) => z.key === zoom)!;
     const ppd = config.pxPerDay;
 
-    const allDates = tasks.flatMap((task) => [task.startDate || task.dueDate, task.dueDate]);
-    const minDate = allDates.length ? dayjs(allDates.sort()[0]) : dayjs().subtract(7, "day");
-    const maxDate = allDates.length ? dayjs(allDates.sort()[allDates.length - 1]) : dayjs().add(45, "day");
+    const taskDates = tasks.flatMap((task) => [task.startDate || task.dueDate, task.dueDate]);
+    const projectDates = projects.flatMap((p) =>
+      [p.contractStart, p.contractEnd].filter((d): d is string => !!d),
+    );
+    const allDates = [...taskDates, ...projectDates].filter(Boolean).sort();
+    const minDate = allDates.length ? dayjs(allDates[0]) : dayjs().subtract(7, "day");
+    const maxDate = allDates.length ? dayjs(allDates[allDates.length - 1]) : dayjs().add(45, "day");
 
     let cs = minDate.startOf("week").subtract(3, "day");
     let ce = maxDate.endOf("week").add(14, "day");
@@ -212,7 +216,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     else if (zoom === "week") glp = 7 * ppd;
 
     return { chartStart: cs, chartEnd: ce, pxPerDay: ppd, columns: cols, groupHeaders: groups, gridLinePx: glp };
-  }, [tasks, zoom]);
+  }, [tasks, projects, zoom]);
 
   async function handlePointerDown(
     event: React.PointerEvent<HTMLElement>,
