@@ -17,7 +17,7 @@ import {
 import type { BulkImportCsvRow, Project, ProjectInput, ProjectTask } from "@/types/scheduler";
 
 export default function Home() {
-  const APP_VERSION = "gantt-zoom-3";
+  const APP_VERSION = "frozen-col-v4";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
