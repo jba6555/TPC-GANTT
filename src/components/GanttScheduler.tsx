@@ -47,7 +47,8 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const viewportRef = useRef<HTMLDivElement | null>(null);
   /** True after pointer moved enough to count as a drag (move/resize). Used so click can open notes after a tap. */
   const dragOccurredRef = useRef(false);
-  const [zoom, setZoom] = useState<ZoomLevel>("day");
+  const [zoom, setZoom] = useState<ZoomLevel>("week");
+  const hasScrolledToToday = useRef(false);
 
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!e.ctrlKey && !e.metaKey) return;
@@ -217,6 +218,17 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
 
     return { chartStart: cs, chartEnd: ce, pxPerDay: ppd, columns: cols, groupHeaders: groups, gridLinePx: glp };
   }, [tasks, projects, zoom]);
+
+  useEffect(() => {
+    if (hasScrolledToToday.current) return;
+    const el = viewportRef.current;
+    if (!el) return;
+    const daysFromStart = dayjs().diff(chartStart, "day");
+    if (daysFromStart > 0) {
+      el.scrollLeft = daysFromStart * pxPerDay;
+      hasScrolledToToday.current = true;
+    }
+  });
 
   async function handlePointerDown(
     event: React.PointerEvent<HTMLElement>,
