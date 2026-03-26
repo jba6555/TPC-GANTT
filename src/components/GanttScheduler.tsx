@@ -354,7 +354,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white p-3">
+    <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-base font-semibold text-zinc-900">Gantt Timeline</h3>
         <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">
@@ -408,7 +408,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         </div>
 
         {/* Scrollable timeline */}
-        <div className="min-w-0 flex-1 overflow-x-auto" ref={viewportRef}>
+        <div className="min-w-0 flex-1 overflow-x-scroll" ref={viewportRef}>
           <div className="relative" style={{ width: timelineWidth }}>
             {hasGroupHeaders && (
               <div className="flex border-b border-zinc-200 bg-zinc-100">
