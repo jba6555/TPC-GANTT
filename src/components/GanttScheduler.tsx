@@ -57,7 +57,6 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
       const scrollContainer = viewportRef.current;
       if (!scrollContainer) return;
       node.scrollIntoView({ inline: "start", block: "nearest" });
-      scrollContainer.scrollLeft = Math.max(0, scrollContainer.scrollLeft - 280);
     }, 50);
   }, []);
 
@@ -352,7 +351,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const totalWidth = LABEL_WIDTH + timelineWidth;
   const MIN_BAR_WIDTH = 6;
   const hasGroupHeaders = groupHeaders.length > 0;
-  const todayOffset = LABEL_WIDTH + dayjs().diff(chartStart, "day") * pxPerDay;
+  const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-3">
@@ -363,102 +362,107 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         </span>
       </div>
 
-      <div className="overflow-auto" ref={viewportRef}>
-        <div className="relative" style={{ width: LABEL_WIDTH + timelineWidth }}>
-          <div className="sticky top-0 z-20">
-            {hasGroupHeaders && (
-              <div className="flex">
-                <div
-                  className="sticky left-0 z-30 shrink-0 border-b border-r border-zinc-200 bg-zinc-100 px-2 py-1"
-                  style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-                />
-                <div className="flex border-b border-zinc-200 bg-zinc-100">
-                  {groupHeaders.map((g) => (
-                    <div
-                      key={g.key}
-                      className="shrink-0 border-r border-zinc-200 px-1.5 py-1 text-center text-[11px] font-semibold text-zinc-700"
-                      style={{ width: g.widthPx }}
-                    >
-                      {g.widthPx >= 30 ? g.label : ""}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="flex">
-              <div
-                className="sticky left-0 z-30 shrink-0 border-b border-r border-zinc-200 bg-white px-2 py-1 text-xs font-semibold text-zinc-600"
-                style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-              >
-                Task
-              </div>
-              <div className="flex border-b border-zinc-200">
-                {columns.map((col) => (
-                  <div
-                    key={col.key}
-                    className="shrink-0 border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
-                    style={{ width: col.widthPx }}
-                  >
-                    {col.widthPx >= 16 ? col.label : ""}
-                  </div>
-                ))}
-              </div>
-            </div>
+      <div className="flex">
+        {/* Fixed label column */}
+        <div className="shrink-0 border-r border-zinc-200" style={{ width: LABEL_WIDTH }}>
+          {hasGroupHeaders && (
+            <div className="border-b border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px]">&nbsp;</div>
+          )}
+          <div className="border-b border-zinc-200 bg-white px-2 py-1 text-xs font-semibold text-zinc-600">
+            Task
           </div>
-
-          <div
-            ref={todayMarkerRef}
-            className="pointer-events-none absolute z-10"
-            style={{ left: todayOffset, top: 0, bottom: 0, width: 2, backgroundColor: "#ef4444" }}
-          />
-
           {projects.map((project) => {
             const projectTasks = tasksByProject.get(project.id) ?? [];
             return (
               <div key={project.id}>
-                <div className="flex border-b border-zinc-200">
-                  <div
-                    className="sticky left-0 z-10 shrink-0 border-r border-zinc-200 bg-zinc-50 p-2"
-                    style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-                  >
-                    <p className="text-base font-semibold text-zinc-900">{project.name}</p>
-                    {project.address ? (
-                      <p className="text-xs text-zinc-500">{project.address}</p>
-                    ) : (
-                      <p className="text-xs text-zinc-400">No address</p>
-                    )}
-                  </div>
-                  <div style={{ width: timelineWidth, minWidth: timelineWidth, height: 40 }} />
+                <div className="border-b border-zinc-200 bg-zinc-50 p-2">
+                  <p className="text-base font-semibold text-zinc-900">{project.name}</p>
+                  {project.address ? (
+                    <p className="text-xs text-zinc-500">{project.address}</p>
+                  ) : (
+                    <p className="text-xs text-zinc-400">No address</p>
+                  )}
                 </div>
-
                 {projectTasks.map((task) => {
                   const start = dayjs(task.startDate || task.dueDate);
                   const due = dayjs(task.dueDate);
-                  const left = start.diff(chartStart, "day") * pxPerDay;
-                  const barWidth = Math.max(
-                    Math.max(due.diff(start, "day") + 1, 1) * pxPerDay,
-                    MIN_BAR_WIDTH,
-                  );
-
                   return (
-                    <div key={task.id} className="flex border-b border-zinc-100">
-                      <button
-                        type="button"
-                        title="View notes"
-                        onClick={() => setNotesTask(task)}
-                        className="sticky left-0 z-10 shrink-0 cursor-pointer border-r border-zinc-200 bg-white p-2 text-right transition-colors hover:bg-zinc-50"
-                        style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH, fontSize: 13 }}
-                      >
-                        <p className="font-medium text-zinc-900">{task.title}</p>
-                        <p className="text-xs text-zinc-500">
-                          {start.format("MMM D")} - {due.format("MMM D, YYYY")}
-                        </p>
-                      </button>
+                    <button
+                      key={task.id}
+                      type="button"
+                      title="View notes"
+                      onClick={() => setNotesTask(task)}
+                      className="block w-full cursor-pointer border-b border-zinc-100 bg-white p-2 text-right transition-colors hover:bg-zinc-50"
+                      style={{ fontSize: 13, height: 48 }}
+                    >
+                      <p className="font-medium text-zinc-900">{task.title}</p>
+                      <p className="text-xs text-zinc-500">
+                        {start.format("MMM D")} - {due.format("MMM D, YYYY")}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Scrollable timeline */}
+        <div className="min-w-0 flex-1 overflow-x-auto" ref={viewportRef}>
+          <div className="relative" style={{ width: timelineWidth }}>
+            {hasGroupHeaders && (
+              <div className="flex border-b border-zinc-200 bg-zinc-100">
+                {groupHeaders.map((g) => (
+                  <div
+                    key={g.key}
+                    className="shrink-0 border-r border-zinc-200 px-1.5 py-1 text-center text-[11px] font-semibold text-zinc-700"
+                    style={{ width: g.widthPx }}
+                  >
+                    {g.widthPx >= 30 ? g.label : ""}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex border-b border-zinc-200">
+              {columns.map((col) => (
+                <div
+                  key={col.key}
+                  className="shrink-0 border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
+                  style={{ width: col.widthPx }}
+                >
+                  {col.widthPx >= 16 ? col.label : ""}
+                </div>
+              ))}
+            </div>
+
+            <div
+              ref={todayMarkerRef}
+              className="pointer-events-none absolute z-10"
+              style={{ left: todayPx, top: 0, bottom: 0, width: 2, backgroundColor: "#ef4444" }}
+            />
+
+            {projects.map((project) => {
+              const projectTasks = tasksByProject.get(project.id) ?? [];
+              return (
+                <div key={project.id}>
+                  <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: 40 }}>
+                    <div className="p-2">&nbsp;</div>
+                  </div>
+                  {projectTasks.map((task) => {
+                    const start = dayjs(task.startDate || task.dueDate);
+                    const due = dayjs(task.dueDate);
+                    const left = start.diff(chartStart, "day") * pxPerDay;
+                    const barWidth = Math.max(
+                      Math.max(due.diff(start, "day") + 1, 1) * pxPerDay,
+                      MIN_BAR_WIDTH,
+                    );
+
+                    return (
                       <div
-                        className="relative h-12"
+                        key={task.id}
+                        className="relative border-b border-zinc-100"
                         style={{
-                          width: timelineWidth,
-                          minWidth: timelineWidth,
+                          height: 48,
                           ...(gridLinePx
                             ? {
                                 backgroundImage: "linear-gradient(to right, #f4f4f5 1px, transparent 1px)",
@@ -496,12 +500,12 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                           />
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
