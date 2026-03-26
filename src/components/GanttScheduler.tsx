@@ -54,7 +54,10 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     if (!node || hasScrolledToToday.current) return;
     hasScrolledToToday.current = true;
     setTimeout(() => {
+      const scrollContainer = viewportRef.current;
+      if (!scrollContainer) return;
       node.scrollIntoView({ inline: "start", block: "nearest" });
+      scrollContainer.scrollLeft = Math.max(0, scrollContainer.scrollLeft - 280);
     }, 50);
   }, []);
 
