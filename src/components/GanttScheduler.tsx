@@ -224,12 +224,13 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     if (tasks.length === 0 && projects.length === 0) return;
     const el = viewportRef.current;
     if (!el) return;
-    const daysFromStart = dayjs().diff(chartStart, "day");
-    if (daysFromStart <= 0) return;
-    requestAnimationFrame(() => {
-      el.scrollLeft = daysFromStart * pxPerDay;
+    const targetScroll = dayjs().diff(chartStart, "day") * pxPerDay;
+    if (targetScroll <= 0) return;
+    const timer = setTimeout(() => {
+      el.scrollLeft = targetScroll;
       hasScrolledToToday.current = true;
-    });
+    }, 100);
+    return () => clearTimeout(timer);
   }, [chartStart, pxPerDay, tasks.length, projects.length]);
 
   async function handlePointerDown(
