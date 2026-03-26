@@ -50,6 +50,14 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const [zoom, setZoom] = useState<ZoomLevel>("week");
   const hasScrolledToToday = useRef(false);
 
+  const todayMarkerRef = useCallback((node: HTMLDivElement | null) => {
+    if (!node || hasScrolledToToday.current) return;
+    hasScrolledToToday.current = true;
+    setTimeout(() => {
+      node.scrollIntoView({ inline: "start", block: "nearest" });
+    }, 50);
+  }, []);
+
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
@@ -219,29 +227,6 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     return { chartStart: cs, chartEnd: ce, pxPerDay: ppd, columns: cols, groupHeaders: groups, gridLinePx: glp };
   }, [tasks, projects, zoom]);
 
-  useEffect(() => {
-    if (hasScrolledToToday.current) return;
-    if (tasks.length === 0 && projects.length === 0) return;
-    const el = viewportRef.current;
-    if (!el) return;
-    const targetScroll = dayjs().diff(chartStart, "day") * pxPerDay;
-    if (targetScroll <= 0) return;
-    let attempts = 0;
-    const tryScroll = () => {
-      attempts += 1;
-      if (attempts > 20) {
-        hasScrolledToToday.current = true;
-        return;
-      }
-      el.scrollLeft = targetScroll;
-      if (Math.abs(el.scrollLeft - targetScroll) < 50) {
-        hasScrolledToToday.current = true;
-      } else {
-        setTimeout(tryScroll, 50);
-      }
-    };
-    setTimeout(tryScroll, 150);
-  }, [chartStart, pxPerDay, tasks.length, projects.length]);
 
   async function handlePointerDown(
     event: React.PointerEvent<HTMLElement>,
@@ -364,6 +349,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const totalWidth = LABEL_WIDTH + timelineWidth;
   const MIN_BAR_WIDTH = 6;
   const hasGroupHeaders = groupHeaders.length > 0;
+  const todayOffset = LABEL_WIDTH + dayjs().diff(chartStart, "day") * pxPerDay;
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-3">
@@ -375,7 +361,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
       </div>
 
       <div className="overflow-auto" ref={viewportRef}>
-        <div style={{ minWidth: totalWidth }}>
+        <div className="relative" style={{ minWidth: totalWidth }}>
           <div className="sticky top-0 z-20 bg-white">
             {hasGroupHeaders && (
               <div className="grid grid-cols-[280px_1fr]">
@@ -418,6 +404,12 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
               </div>
             </div>
           </div>
+
+          <div
+            ref={todayMarkerRef}
+            className="pointer-events-none absolute z-10"
+            style={{ left: todayOffset, top: 0, bottom: 0, width: 2, backgroundColor: "#ef4444" }}
+          />
 
           {projects.map((project) => {
             const projectTasks = tasksByProject.get(project.id) ?? [];
