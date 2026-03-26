@@ -61,18 +61,25 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     }, 50);
   }, []);
 
+  const zoomDeltaRef = useRef(0);
+  const ZOOM_THRESHOLD = 150;
+
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     e.stopPropagation();
+    zoomDeltaRef.current += e.deltaY;
+    if (Math.abs(zoomDeltaRef.current) < ZOOM_THRESHOLD) return;
+    const direction = zoomDeltaRef.current > 0 ? 1 : -1;
+    zoomDeltaRef.current = 0;
     const el = viewportRef.current;
     if (el && el.scrollWidth > el.clientWidth) {
       scrollFractionRef.current = el.scrollLeft / (el.scrollWidth - el.clientWidth);
     }
     setZoom((prev) => {
       const idx = ZOOM_KEYS.indexOf(prev);
-      if (e.deltaY > 0 && idx < ZOOM_KEYS.length - 1) return ZOOM_KEYS[idx + 1];
-      if (e.deltaY < 0 && idx > 0) return ZOOM_KEYS[idx - 1];
+      if (direction > 0 && idx < ZOOM_KEYS.length - 1) return ZOOM_KEYS[idx + 1];
+      if (direction < 0 && idx > 0) return ZOOM_KEYS[idx - 1];
       return prev;
     });
   }, []);
