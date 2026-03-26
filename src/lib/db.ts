@@ -3,12 +3,13 @@ import {
   collection,
   doc,
   deleteDoc,
-  getDocs,
+  getDocsFromServer,
   onSnapshot,
   query,
   serverTimestamp,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import type { Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
@@ -161,17 +162,30 @@ export async function updateTaskDates(taskId: string, startDate?: string, dueDat
   await updateDoc(taskRef, patch);
 }
 
+const FIRESTORE_BATCH_LIMIT = 500;
+
+/**
+ * Deletes a project and its tasks. Uses a server read so the query does not hang on
+ * local cache, and batched writes so many task deletes are one round-trip each
+ * instead of N parallel deleteDoc calls.
+ */
 export async function deleteProjectAndTasks(projectId: string) {
   const db = getFirestoreDb();
   const projectRef = doc(db, "projects", projectId);
+  const tasksQuery = query(tasksCollectionRef(), where("projectId", "==", projectId));
 
-  // Delete all tasks belonging to this project.
-  const tasksSnap = await getDocs(
-    query(tasksCollectionRef(), where("projectId", "==", projectId)),
-  );
-  await Promise.all(tasksSnap.docs.map((d) => deleteDoc(d.ref)));
+  const tasksSnap = await getDocsFromServer(tasksQuery);
+  const taskRefs = tasksSnap.docs.map((d) => d.ref);
 
-  // Delete the project last.
+  for (let i = 0; i < taskRefs.length; i += FIRESTORE_BATCH_LIMIT) {
+    const batch = writeBatch(db);
+    const chunk = taskRefs.slice(i, i + FIRESTORE_BATCH_LIMIT);
+    for (const ref of chunk) {
+      batch.delete(ref);
+    }
+    await batch.commit();
+  }
+
   await deleteDoc(projectRef);
 }
 

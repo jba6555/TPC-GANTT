@@ -37,3 +37,14 @@ export interface TaskInput {
   dueDate: string;
   notes?: string;
 }
+
+export interface BulkImportCsvRow {
+  projectName: string;
+  address?: string;
+  contractStart?: string;
+  contractEnd?: string;
+  taskTitle?: string;
+  taskStartDate?: string;
+  taskDueDate?: string;
+  taskNotes?: string;
+}

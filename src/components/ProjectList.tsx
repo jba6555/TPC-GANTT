@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import type { Project } from "@/types/scheduler";
+import { useEffect, useMemo, useState } from "react";
+import type { BulkImportCsvRow, Project, ProjectTask } from "@/types/scheduler";
 
 interface ProjectListProps {
   projects: Project[];
+  tasks: ProjectTask[];
   selectedProjectId?: string;
   onSelect: (projectId: string) => void;
   onAddProject: (input: {
@@ -26,16 +27,21 @@ interface ProjectListProps {
     dueDate: string;
     notes?: string;
   }) => Promise<void>;
+  onUpdateTaskDates: (taskId: string, startDate?: string, dueDate?: string) => Promise<void>;
+  onBulkUpload: (rows: BulkImportCsvRow[]) => Promise<{ createdProjects: number; createdTasks: number }>;
 }
 
 export default function ProjectList({
   projects,
+  tasks,
   selectedProjectId,
   onSelect,
   onAddProject,
   onDeleteProject,
   onUpdateProject,
   onAddTask,
+  onUpdateTaskDates,
+  onBulkUpload,
 }: ProjectListProps) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -44,8 +50,29 @@ export default function ProjectList({
   const [contractEnd, setContractEnd] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPendingDeleteIds((prev) =>
+      prev.filter((id) => projects.some((p) => p.id === id)),
+    );
+  }, [projects]);
+
+  const visibleProjects = projects.filter((p) => !pendingDeleteIds.includes(p.id));
+
+  const tasksByProjectId = useMemo(() => {
+    const map = new Map<string, ProjectTask[]>();
+    for (const t of tasks) {
+      const arr = map.get(t.projectId) ?? [];
+      arr.push(t);
+      map.set(t.projectId, arr);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => a.sortOrder - b.sortOrder);
+    }
+    return map;
+  }, [tasks]);
 
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -60,8 +87,101 @@ export default function ProjectList({
   const [taskStartDate, setTaskStartDate] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
   const [taskNotes, setTaskNotes] = useState("");
+  const [notesTask, setNotesTask] = useState<ProjectTask | null>(null);
+  const [notesStartDate, setNotesStartDate] = useState("");
+  const [notesDueDate, setNotesDueDate] = useState("");
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
   const [taskSaving, setTaskSaving] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadResult, setUploadResult] = useState<string | null>(null);
+
+  function parseCsvLine(line: string) {
+    const cells: string[] = [];
+    let value = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          value += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === "," && !inQuotes) {
+        cells.push(value.trim());
+        value = "";
+      } else {
+        value += ch;
+      }
+    }
+    cells.push(value.trim());
+    return cells;
+  }
+
+  function normalizeHeader(text: string) {
+    return text.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  }
+
+  function parseCsvRows(csvText: string) {
+    const lines = csvText
+      .replace(/\r/g, "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length < 2) {
+      throw new Error("CSV must include a header row and at least one data row.");
+    }
+
+    const headerCells = parseCsvLine(lines[0]).map(normalizeHeader);
+    const getIndex = (...aliases: string[]) =>
+      headerCells.findIndex((header) => aliases.includes(header));
+
+    const projectNameIdx = getIndex("project_name", "project", "name");
+    const addressIdx = getIndex("address");
+    const contractStartIdx = getIndex("contract_start", "start_contract");
+    const contractEndIdx = getIndex("contract_end", "end_contract");
+    const taskTitleIdx = getIndex("task_title", "task", "title");
+    const taskStartIdx = getIndex("task_start", "task_start_date", "start_date");
+    const taskDueIdx = getIndex("task_due", "task_due_date", "due_date");
+    const notesIdx = getIndex("task_notes", "notes");
+
+    if (projectNameIdx < 0) {
+      throw new Error("CSV is missing required column: project_name");
+    }
+
+    const rows: BulkImportCsvRow[] = [];
+    for (let i = 1; i < lines.length; i += 1) {
+      const cells = parseCsvLine(lines[i]);
+      const projectName = cells[projectNameIdx]?.trim() ?? "";
+      if (!projectName) {
+        throw new Error(`Row ${i + 1}: project_name is required.`);
+      }
+
+      const taskTitle = taskTitleIdx >= 0 ? cells[taskTitleIdx]?.trim() || undefined : undefined;
+      const taskStartDate = taskStartIdx >= 0 ? cells[taskStartIdx]?.trim() || undefined : undefined;
+      const taskDueDate = taskDueIdx >= 0 ? cells[taskDueIdx]?.trim() || undefined : undefined;
+      if (taskTitle && !taskStartDate && !taskDueDate) {
+        throw new Error(`Row ${i + 1}: task row needs task_start or task_due date.`);
+      }
+
+      rows.push({
+        projectName,
+        address: addressIdx >= 0 ? cells[addressIdx]?.trim() || undefined : undefined,
+        contractStart: contractStartIdx >= 0 ? cells[contractStartIdx]?.trim() || undefined : undefined,
+        contractEnd: contractEndIdx >= 0 ? cells[contractEndIdx]?.trim() || undefined : undefined,
+        taskTitle,
+        taskStartDate,
+        taskDueDate,
+        taskNotes: notesIdx >= 0 ? cells[notesIdx]?.trim() || undefined : undefined,
+      });
+    }
+    return rows;
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -100,16 +220,29 @@ export default function ProjectList({
   }
 
   return (
-    <aside className="w-full max-w-xs rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+    <aside className="w-full min-w-0 max-w-md rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-zinc-900">Projects</h2>
-        <button
-          type="button"
-          onClick={() => setShowForm((prev) => !prev)}
-          className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          + Project
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setUploadError(null);
+              setUploadResult(null);
+              setShowUploadModal(true);
+            }}
+            className="rounded-md bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
+          >
+            Upload CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowForm((prev) => !prev)}
+            className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            + Project
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -153,7 +286,7 @@ export default function ProjectList({
       )}
 
       <ul className="space-y-2">
-        {projects.map((project) => (
+        {visibleProjects.map((project) => (
           <li key={project.id}>
             <div className="rounded border border-zinc-200 bg-white">
               <button
@@ -167,11 +300,36 @@ export default function ProjectList({
                 {project.address && <p className="text-zinc-500">{project.address}</p>}
               </button>
 
+              <div className="border-t border-zinc-200 bg-zinc-50 px-3 py-2.5">
+                <p className="mb-2 text-xs font-semibold text-zinc-700">Tasks</p>
+                <ul className="space-y-1.5">
+                  {(tasksByProjectId.get(project.id) ?? []).map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        title="View task notes"
+                        onClick={() => {
+                          setNotesTask(t);
+                          setNotesStartDate(t.startDate || t.dueDate);
+                          setNotesDueDate(t.dueDate);
+                          setNotesError(null);
+                        }}
+                        className="w-full break-words rounded px-1 py-0.5 text-left text-sm font-medium leading-snug text-zinc-900 hover:bg-zinc-100"
+                      >
+                        {t.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {(tasksByProjectId.get(project.id) ?? []).length === 0 && (
+                  <p className="text-sm text-zinc-500">No tasks yet</p>
+                )}
+              </div>
+
               <div className="flex items-center gap-2 border-t border-zinc-200 px-3 py-2">
                 {editingProjectId !== project.id ? (
                 <button
                   type="button"
-                  disabled={deletingProjectId === project.id}
                   onClick={() => {
                     const ok = window.confirm(
                       `Delete project "${project.name}"? This will also delete all its tasks.`,
@@ -180,45 +338,42 @@ export default function ProjectList({
 
                     const projectId = project.id;
                     setDeleteError(null);
-                    setDeletingProjectId(projectId);
 
-                    let didTimeout = false;
-                    const safety = window.setTimeout(() => {
-                      didTimeout = true;
-                      setDeletingProjectId(null);
-                      setDeleteError("Delete is taking longer than expected. It will disappear once Firestore finishes.");
-                    }, 4000);
+                    const others = projects.filter((p) => p.id !== projectId);
+                    if (selectedProjectId === projectId) {
+                      onSelect(others[0]?.id ?? "");
+                    }
+                    if (editingProjectId === projectId) {
+                      setEditingProjectId(null);
+                    }
+
+                    setPendingDeleteIds((prev) =>
+                      prev.includes(projectId) ? prev : [...prev, projectId],
+                    );
 
                     void onDeleteProject(projectId)
                       .then(() => {
-                        if (didTimeout) return;
                         setDeleteError(null);
                       })
                       .catch((e: unknown) => {
-                        if (didTimeout) return;
+                        setPendingDeleteIds((prev) => prev.filter((x) => x !== projectId));
                         const msg =
                           e && typeof e === "object" && "message" in e
                             ? String((e as { message?: string }).message)
                             : "";
                         setDeleteError(msg || "Could not delete project.");
                         console.error(e);
-                      })
-                      .finally(() => {
-                        if (didTimeout) return;
-                        window.clearTimeout(safety);
-                        setDeletingProjectId(null);
                       });
                   }}
-                  className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-60"
+                  className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white"
                 >
-                  {deletingProjectId === project.id ? "Deleting..." : "Delete"}
+                  Delete
                 </button>
                 ) : null}
 
                 {editingProjectId !== project.id ? (
                   <button
                     type="button"
-                    disabled={deletingProjectId === project.id}
                     onClick={() => {
                       setTaskError(null);
                       setTaskSaving(false);
@@ -237,7 +392,6 @@ export default function ProjectList({
                 {editingProjectId !== project.id ? (
                   <button
                     type="button"
-                    disabled={deletingProjectId === project.id}
                     onClick={() => {
                       setEditError(null);
                       setSavingEdit(false);
@@ -339,6 +493,79 @@ export default function ProjectList({
       </ul>
 
       {deleteError && <p className="mt-3 text-xs text-red-600">{deleteError}</p>}
+
+      {showUploadModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="csv-upload-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowUploadModal(false);
+          }}
+        >
+          <div className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 id="csv-upload-title" className="text-lg font-semibold text-zinc-900">
+                  Bulk Upload CSV
+                </h3>
+                <p className="text-sm text-zinc-600">
+                  Required column: project_name
+                </p>
+                <p className="text-xs text-zinc-500">
+                  Optional: address, contract_start, contract_end, task_title, task_start, task_due, task_notes
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(false)}
+                className="rounded px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              disabled={uploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploadError(null);
+                setUploadResult(null);
+                setUploading(true);
+                void file
+                  .text()
+                  .then((text) => parseCsvRows(text))
+                  .then((rows) => onBulkUpload(rows))
+                  .then((result) => {
+                    setUploadResult(
+                      `Imported ${result.createdProjects} project(s) and ${result.createdTasks} task(s).`,
+                    );
+                  })
+                  .catch((err: unknown) => {
+                    const message =
+                      err && typeof err === "object" && "message" in err
+                        ? String((err as { message?: string }).message)
+                        : "";
+                    setUploadError(message || "Could not import CSV.");
+                    console.error(err);
+                  })
+                  .finally(() => {
+                    setUploading(false);
+                    e.currentTarget.value = "";
+                  });
+              }}
+              className="w-full rounded border border-zinc-200 p-2 text-sm"
+            />
+
+            {uploadError && <p className="mt-2 text-xs text-red-600">{uploadError}</p>}
+            {uploadResult && <p className="mt-2 text-xs text-green-700">{uploadResult}</p>}
+          </div>
+        </div>
+      )}
 
       {taskModalProjectId && (
         <div
@@ -492,6 +719,122 @@ export default function ProjectList({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {notesTask && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sidebar-task-notes-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setNotesTask(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 id="sidebar-task-notes-title" className="text-lg font-semibold text-zinc-900">
+                  {notesTask.title}
+                </h3>
+                <p className="text-sm text-zinc-600">
+                  {projects.find((p) => p.id === notesTask.projectId)?.name ?? "Project"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotesTask(null)}
+                className="rounded px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="rounded-md border border-zinc-100 bg-zinc-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Notes</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">
+                {notesTask.notes?.trim() ? notesTask.notes : "No notes for this task."}
+              </p>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!notesTask) return;
+                if (!notesStartDate || !notesDueDate) {
+                  setNotesError("Start and due dates are required.");
+                  return;
+                }
+                if (notesStartDate > notesDueDate) {
+                  setNotesError("Start date must be on or before due date.");
+                  return;
+                }
+                setNotesError(null);
+                setNotesSaving(true);
+                void onUpdateTaskDates(notesTask.id, notesStartDate, notesDueDate)
+                  .then(() => {
+                    setNotesTask((prev) => {
+                      if (!prev || prev.id !== notesTask.id) return prev;
+                      return {
+                        ...prev,
+                        startDate: notesStartDate,
+                        dueDate: notesDueDate,
+                      };
+                    });
+                  })
+                  .catch((err: unknown) => {
+                    const message =
+                      err && typeof err === "object" && "message" in err
+                        ? String((err as { message?: string }).message)
+                        : "";
+                    setNotesError(message || "Could not update task dates.");
+                    console.error(err);
+                  })
+                  .finally(() => setNotesSaving(false));
+              }}
+              className="mt-3 space-y-2 rounded-md border border-zinc-200 p-3"
+            >
+              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Timeline</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">Start</label>
+                  <input
+                    type="date"
+                    value={notesStartDate}
+                    onChange={(e) => setNotesStartDate(e.target.value)}
+                    required
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">Due</label>
+                  <input
+                    type="date"
+                    value={notesDueDate}
+                    onChange={(e) => setNotesDueDate(e.target.value)}
+                    required
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+              </div>
+              {notesError && <p className="text-xs text-red-600">{notesError}</p>}
+              <button
+                type="submit"
+                disabled={notesSaving}
+                className="w-full rounded bg-blue-600 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {notesSaving ? "Saving..." : "Save Task Dates"}
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => setNotesTask(null)}
+              className="mt-4 w-full rounded-lg bg-zinc-900 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

@@ -14,16 +14,17 @@ import {
   updateProject,
   updateTaskDates,
 } from "@/lib/db";
-import type { Project, ProjectInput, ProjectTask } from "@/types/scheduler";
+import type { BulkImportCsvRow, Project, ProjectInput, ProjectTask } from "@/types/scheduler";
 
 export default function Home() {
-  const APP_VERSION = "d4d0819";
+  const APP_VERSION = "sidebar-tasks-2";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [allTasks, setAllTasks] = useState<ProjectTask[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
@@ -105,9 +106,6 @@ export default function Home() {
 
   async function handleDeleteProject(projectId: string) {
     await deleteProjectAndTasks(projectId);
-    if (selectedProjectId === projectId) {
-      setSelectedProjectId("");
-    }
   }
 
   async function handleUpdateProject(
@@ -120,6 +118,61 @@ export default function Home() {
   async function handleSignOut() {
     await logout();
     router.replace("/login");
+  }
+
+  async function handleBulkUpload(rows: BulkImportCsvRow[]) {
+    if (!userId) {
+      throw new Error("You must be signed in.");
+    }
+
+    let createdProjects = 0;
+    let createdTasks = 0;
+    const projectIdByKey = new Map<string, string>();
+    const taskCountByProjectId = new Map<string, number>();
+
+    for (const row of rows) {
+      const key = [
+        row.projectName.trim(),
+        row.address?.trim() ?? "",
+        row.contractStart ?? "",
+        row.contractEnd ?? "",
+      ].join("|");
+
+      let projectId = projectIdByKey.get(key);
+      if (!projectId) {
+        projectId = await createProject(userId, {
+          name: row.projectName.trim(),
+          address: row.address?.trim() ?? "",
+          contractStart: row.contractStart || undefined,
+          contractEnd: row.contractEnd || undefined,
+        });
+        projectIdByKey.set(key, projectId);
+        taskCountByProjectId.set(projectId, 0);
+        createdProjects += 1;
+      }
+
+      if (!row.taskTitle?.trim()) continue;
+      const startDate = row.taskStartDate || row.taskDueDate;
+      const dueDate = row.taskDueDate || row.taskStartDate;
+      if (!startDate || !dueDate) continue;
+
+      const sortOrder = taskCountByProjectId.get(projectId) ?? 0;
+      await createTask(
+        projectId,
+        {
+          title: row.taskTitle.trim(),
+          type: "task",
+          startDate,
+          dueDate,
+          notes: row.taskNotes?.trim() || undefined,
+        },
+        sortOrder,
+      );
+      taskCountByProjectId.set(projectId, sortOrder + 1);
+      createdTasks += 1;
+    }
+
+    return { createdProjects, createdTasks };
   }
 
   async function handleSeedSample() {
@@ -191,16 +244,49 @@ export default function Home() {
         </button>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <ProjectList
-          projects={projects}
-          selectedProjectId={selectedProjectId}
-          onSelect={setSelectedProjectId}
-          onAddProject={handleAddProject}
-          onDeleteProject={handleDeleteProject}
-          onUpdateProject={handleUpdateProject}
-          onAddTask={handleAddTaskForProject}
-        />
+      <div className={`grid gap-4 ${sidebarOpen ? "lg:grid-cols-[320px_1fr]" : "lg:grid-cols-[auto_1fr]"}`}>
+        {sidebarOpen ? (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              title="Collapse sidebar"
+              className="absolute -right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-500 shadow-sm hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                <path fillRule="evenodd" d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <ProjectList
+              projects={projects}
+              tasks={allTasks}
+              selectedProjectId={selectedProjectId}
+              onSelect={setSelectedProjectId}
+              onAddProject={handleAddProject}
+              onDeleteProject={handleDeleteProject}
+              onUpdateProject={handleUpdateProject}
+              onAddTask={handleAddTaskForProject}
+              onUpdateTaskDates={updateTaskDates}
+              onBulkUpload={handleBulkUpload}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col items-center rounded-lg border border-zinc-200 bg-white py-3 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              title="Expand sidebar"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                <path fillRule="evenodd" d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <span className="mt-2 text-xs font-medium text-zinc-400" style={{ writingMode: "vertical-lr" }}>
+              Projects
+            </span>
+          </div>
+        )}
         <section className="space-y-3">
           <div className="rounded-lg border border-zinc-200 bg-white p-3">
             <h2 className="text-lg font-semibold text-zinc-900">
