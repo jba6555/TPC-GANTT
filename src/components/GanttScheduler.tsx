@@ -1,7 +1,7 @@
 "use client";
 
 import dayjs from "dayjs";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Project, ProjectTask } from "@/types/scheduler";
 
 interface GanttSchedulerProps {
@@ -12,9 +12,33 @@ interface GanttSchedulerProps {
 
 type DragMode = "move" | "resizeStart" | "resizeEnd";
 
-const DAY_WIDTH = 28;
-
 const DRAG_THRESHOLD_PX = 8;
+
+type ZoomLevel = "day" | "week" | "month" | "year" | "3year";
+
+const ZOOM_LEVELS: { key: ZoomLevel; label: string; pxPerDay: number }[] = [
+  { key: "day", label: "Day", pxPerDay: 28 },
+  { key: "week", label: "Week", pxPerDay: 5 },
+  { key: "month", label: "Month", pxPerDay: 1.5 },
+  { key: "year", label: "Year", pxPerDay: 0.6 },
+  { key: "3year", label: "3 Years", pxPerDay: 0.2 },
+];
+
+interface TimelineColumn {
+  key: string;
+  label: string;
+  widthPx: number;
+  groupKey: string;
+  groupLabel: string;
+}
+
+interface GroupHeader {
+  key: string;
+  label: string;
+  widthPx: number;
+}
+
+const ZOOM_KEYS: ZoomLevel[] = ZOOM_LEVELS.map((z) => z.key);
 
 export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: GanttSchedulerProps) {
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
@@ -23,25 +47,178 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const viewportRef = useRef<HTMLDivElement | null>(null);
   /** True after pointer moved enough to count as a drag (move/resize). Used so click can open notes after a tap. */
   const dragOccurredRef = useRef(false);
+  const [zoom, setZoom] = useState<ZoomLevel>("day");
 
-  const { chartStart, chartEnd, days } = useMemo(() => {
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setZoom((prev) => {
+      const idx = ZOOM_KEYS.indexOf(prev);
+      if (e.deltaY > 0 && idx < ZOOM_KEYS.length - 1) return ZOOM_KEYS[idx + 1];
+      if (e.deltaY < 0 && idx > 0) return ZOOM_KEYS[idx - 1];
+      return prev;
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [handleWheel]);
+
+  const { chartStart, chartEnd, pxPerDay, columns, groupHeaders, gridLinePx } = useMemo(() => {
+    const config = ZOOM_LEVELS.find((z) => z.key === zoom)!;
+    const ppd = config.pxPerDay;
+
     const allDates = tasks.flatMap((task) => [task.startDate || task.dueDate, task.dueDate]);
     const minDate = allDates.length ? dayjs(allDates.sort()[0]) : dayjs().subtract(7, "day");
     const maxDate = allDates.length ? dayjs(allDates.sort()[allDates.length - 1]) : dayjs().add(45, "day");
-    const chartStartValue = minDate.startOf("week").subtract(3, "day");
-    const chartEndValue = maxDate.endOf("week").add(14, "day");
-    const span = chartEndValue.diff(chartStartValue, "day");
-    const dayItems = Array.from({ length: span + 1 }).map((_, idx) => chartStartValue.add(idx, "day"));
-    return { chartStart: chartStartValue, chartEnd: chartEndValue, days: dayItems };
-  }, [tasks]);
+
+    let cs = minDate.startOf("week").subtract(3, "day");
+    let ce = maxDate.endOf("week").add(14, "day");
+
+    switch (zoom) {
+      case "day":
+        break;
+      case "week":
+        cs = minDate.subtract(1, "week").startOf("week");
+        ce = maxDate.add(2, "week").endOf("week");
+        break;
+      case "month":
+        cs = minDate.subtract(1, "month").startOf("month");
+        ce = maxDate.add(1, "month").endOf("month");
+        break;
+      case "year": {
+        const padStart = minDate.subtract(3, "month");
+        const qm = Math.floor(padStart.month() / 3) * 3;
+        cs = padStart.startOf("year").add(qm, "month");
+        const padEnd = maxDate.add(3, "month");
+        const qme = Math.floor(padEnd.month() / 3) * 3 + 2;
+        ce = padEnd.startOf("year").add(qme, "month").endOf("month");
+        break;
+      }
+      case "3year":
+        cs = minDate.subtract(1, "year").startOf("year");
+        ce = maxDate.add(1, "year").endOf("year");
+        break;
+    }
+
+    const cols: TimelineColumn[] = [];
+    switch (zoom) {
+      case "day": {
+        let d = cs;
+        while (!d.isAfter(ce)) {
+          cols.push({
+            key: d.format("YYYY-MM-DD"),
+            label: d.format("D"),
+            widthPx: ppd,
+            groupKey: d.format("YYYY-MM"),
+            groupLabel: d.format("MMMM YYYY"),
+          });
+          d = d.add(1, "day");
+        }
+        break;
+      }
+      case "week": {
+        let d = cs;
+        while (d.isBefore(ce)) {
+          const weekEnd = d.add(6, "day");
+          const eff = weekEnd.isAfter(ce) ? ce : weekEnd;
+          const n = eff.diff(d, "day") + 1;
+          cols.push({
+            key: d.format("YYYY-[W]ww"),
+            label: d.format("MMM D"),
+            widthPx: n * ppd,
+            groupKey: d.format("YYYY-MM"),
+            groupLabel: d.format("MMMM YYYY"),
+          });
+          d = d.add(1, "week");
+        }
+        break;
+      }
+      case "month": {
+        let d = cs;
+        while (d.isBefore(ce) || d.isSame(ce, "day")) {
+          const mEnd = d.endOf("month");
+          const eff = mEnd.isAfter(ce) ? ce : mEnd;
+          const n = eff.diff(d, "day") + 1;
+          cols.push({
+            key: d.format("YYYY-MM"),
+            label: d.format("MMM"),
+            widthPx: n * ppd,
+            groupKey: d.format("YYYY"),
+            groupLabel: d.format("YYYY"),
+          });
+          d = eff.add(1, "day");
+          if (d.isAfter(ce)) break;
+        }
+        break;
+      }
+      case "year": {
+        let d = cs;
+        while (d.isBefore(ce) || d.isSame(ce, "day")) {
+          const qMonth = Math.floor(d.month() / 3) * 3;
+          const qEnd = d.startOf("year").add(qMonth + 2, "month").endOf("month");
+          const eff = qEnd.isAfter(ce) ? ce : qEnd;
+          const n = eff.diff(d, "day") + 1;
+          const qNum = Math.floor(qMonth / 3) + 1;
+          cols.push({
+            key: `${d.year()}-Q${qNum}`,
+            label: `Q${qNum}`,
+            widthPx: n * ppd,
+            groupKey: String(d.year()),
+            groupLabel: String(d.year()),
+          });
+          d = eff.add(1, "day");
+          if (d.isAfter(ce)) break;
+        }
+        break;
+      }
+      case "3year": {
+        let d = cs;
+        while (d.isBefore(ce) || d.isSame(ce, "day")) {
+          const yEnd = d.endOf("year");
+          const eff = yEnd.isAfter(ce) ? ce : yEnd;
+          const n = eff.diff(d, "day") + 1;
+          cols.push({
+            key: d.format("YYYY"),
+            label: d.format("YYYY"),
+            widthPx: n * ppd,
+            groupKey: "",
+            groupLabel: "",
+          });
+          d = eff.add(1, "day");
+          if (d.isAfter(ce)) break;
+        }
+        break;
+      }
+    }
+
+    const groups: GroupHeader[] = [];
+    let currentGroupKey = "";
+    for (const col of cols) {
+      if (!col.groupKey) continue;
+      if (col.groupKey === currentGroupKey) {
+        groups[groups.length - 1].widthPx += col.widthPx;
+      } else {
+        currentGroupKey = col.groupKey;
+        groups.push({ key: col.groupKey, label: col.groupLabel, widthPx: col.widthPx });
+      }
+    }
+
+    let glp = 0;
+    if (zoom === "day") glp = ppd;
+    else if (zoom === "week") glp = 7 * ppd;
+
+    return { chartStart: cs, chartEnd: ce, pxPerDay: ppd, columns: cols, groupHeaders: groups, gridLinePx: glp };
+  }, [tasks, zoom]);
 
   async function handlePointerDown(
     event: React.PointerEvent<HTMLElement>,
     task: ProjectTask,
     mode: DragMode,
   ) {
-    // preventDefault on pointerdown can suppress the follow-up click on some browsers/touch —
-    // only needed for resize handles to reduce accidental text selection.
     if (mode !== "move") {
       event.preventDefault();
     }
@@ -60,7 +237,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
       }
       if (!viewportRef.current) return;
       const deltaX = moveEvent.clientX - startX;
-      const dayDelta = Math.round(deltaX / DAY_WIDTH);
+      const dayDelta = Math.round(deltaX / pxPerDay);
       const row = viewportRef.current.querySelector(`[data-task-id="${task.id}"]`) as HTMLDivElement | null;
       if (!row) return;
 
@@ -77,13 +254,13 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         if (nextDue.isBefore(nextStart)) nextDue = nextStart;
       }
 
-      row.style.left = `${nextStart.diff(chartStart, "day") * DAY_WIDTH}px`;
-      row.style.width = `${Math.max(nextDue.diff(nextStart, "day") + 1, 1) * DAY_WIDTH}px`;
+      row.style.left = `${nextStart.diff(chartStart, "day") * pxPerDay}px`;
+      row.style.width = `${Math.max(nextDue.diff(nextStart, "day") + 1, 1) * pxPerDay}px`;
     };
 
     const onUp = (upEvent: PointerEvent) => {
       const deltaX = upEvent.clientX - startX;
-      const dayDelta = Math.round(deltaX / DAY_WIDTH);
+      const dayDelta = Math.round(deltaX / pxPerDay);
       let nextStart = originalStart;
       let nextDue = originalDue;
       if (mode === "move") {
@@ -154,26 +331,61 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   }, [tasks]);
 
   const LABEL_WIDTH = 280;
-  const totalWidth = LABEL_WIDTH + days.length * DAY_WIDTH;
+  const timelineWidth = columns.reduce((sum, c) => sum + c.widthPx, 0);
+  const totalWidth = LABEL_WIDTH + timelineWidth;
+  const MIN_BAR_WIDTH = 6;
+  const hasGroupHeaders = groupHeaders.length > 0;
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-3">
-      <h3 className="mb-2 text-base font-semibold text-zinc-900">Gantt Timeline (All Projects)</h3>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-base font-semibold text-zinc-900">Gantt Timeline</h3>
+        <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">
+          {ZOOM_LEVELS.find((z) => z.key === zoom)!.label} view · Ctrl+Scroll to zoom
+        </span>
+      </div>
+
       <div className="overflow-auto" ref={viewportRef}>
         <div style={{ minWidth: totalWidth }}>
-          <div className="sticky top-0 z-20 grid grid-cols-[280px_1fr] bg-white">
-            <div className="sticky left-0 z-30 border-b border-r border-zinc-200 bg-white p-2 text-xs font-semibold text-zinc-600" style={{ width: LABEL_WIDTH }}>Task</div>
-            <div className="border-b border-zinc-200">
-              <div className="flex">
-                {days.map((day) => (
-                  <div
-                    key={day.format("YYYY-MM-DD")}
-                    className="border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
-                    style={{ width: DAY_WIDTH }}
-                  >
-                    {day.format("MMM D")}
-                  </div>
-                ))}
+          <div className="sticky top-0 z-20 bg-white">
+            {hasGroupHeaders && (
+              <div className="grid grid-cols-[280px_1fr]">
+                <div
+                  className="sticky left-0 z-30 border-b border-r border-zinc-200 bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-500"
+                  style={{ width: LABEL_WIDTH }}
+                />
+                <div className="flex border-b border-zinc-200 bg-zinc-100">
+                  {groupHeaders.map((g) => (
+                    <div
+                      key={g.key}
+                      className="shrink-0 border-r border-zinc-200 px-1.5 py-1 text-center text-[11px] font-semibold text-zinc-700"
+                      style={{ width: g.widthPx }}
+                    >
+                      {g.widthPx >= 30 ? g.label : ""}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-[280px_1fr]">
+              <div
+                className="sticky left-0 z-30 border-b border-r border-zinc-200 bg-white px-2 py-1 text-xs font-semibold text-zinc-600"
+                style={{ width: LABEL_WIDTH }}
+              >
+                Task
+              </div>
+              <div className="border-b border-zinc-200">
+                <div className="flex">
+                  {columns.map((col) => (
+                    <div
+                      key={col.key}
+                      className="shrink-0 border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
+                      style={{ width: col.widthPx }}
+                    >
+                      {col.widthPx >= 16 ? col.label : ""}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -183,7 +395,10 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
             return (
               <div key={project.id}>
                 <div className="grid grid-cols-[280px_1fr] border-b border-zinc-200 bg-zinc-50">
-                  <div className="sticky left-0 z-10 border-r border-zinc-200 bg-zinc-50 p-2" style={{ width: LABEL_WIDTH }}>
+                  <div
+                    className="sticky left-0 z-10 border-r border-zinc-200 bg-zinc-50 p-2"
+                    style={{ width: LABEL_WIDTH }}
+                  >
                     <p className="text-base font-semibold text-zinc-900">{project.name}</p>
                     {project.address ? (
                       <p className="text-xs text-zinc-500">{project.address}</p>
@@ -197,8 +412,11 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                 {projectTasks.map((task) => {
                   const start = dayjs(task.startDate || task.dueDate);
                   const due = dayjs(task.dueDate);
-                  const left = start.diff(chartStart, "day") * DAY_WIDTH;
-                  const width = Math.max(due.diff(start, "day") + 1, 1) * DAY_WIDTH;
+                  const left = start.diff(chartStart, "day") * pxPerDay;
+                  const barWidth = Math.max(
+                    Math.max(due.diff(start, "day") + 1, 1) * pxPerDay,
+                    MIN_BAR_WIDTH,
+                  );
 
                   return (
                     <div key={task.id} className="grid grid-cols-[280px_1fr] border-b border-zinc-100">
@@ -214,13 +432,23 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                           {start.format("MMM D")} - {due.format("MMM D, YYYY")}
                         </p>
                       </button>
-                      <div className="relative h-12 bg-[linear-gradient(to_right,#f4f4f5_1px,transparent_1px)] bg-[length:28px_100%]">
+                      <div
+                        className="relative h-12"
+                        style={
+                          gridLinePx
+                            ? {
+                                backgroundImage: "linear-gradient(to right, #f4f4f5 1px, transparent 1px)",
+                                backgroundSize: `${gridLinePx}px 100%`,
+                              }
+                            : undefined
+                        }
+                      >
                         <div
                           data-task-id={task.id}
                           className={`absolute top-2 flex h-8 items-center rounded ${
                             dragTaskId === task.id ? "bg-blue-700" : "bg-blue-600"
                           } text-white ${pending === task.id ? "opacity-60" : ""}`}
-                          style={{ left, width, cursor: "grab" }}
+                          style={{ left, width: barWidth, cursor: "grab" }}
                           onClick={() => {
                             if (!dragOccurredRef.current) {
                               setNotesTask(task);
@@ -252,6 +480,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
           })}
         </div>
       </div>
+
       {notesTask && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
