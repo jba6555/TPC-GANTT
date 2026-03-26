@@ -364,13 +364,13 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
       </div>
 
       <div className="overflow-auto" ref={viewportRef}>
-        <div className="relative" style={{ minWidth: totalWidth }}>
-          <div className="sticky top-0 z-20 bg-white">
+        <div className="relative" style={{ width: LABEL_WIDTH + timelineWidth }}>
+          <div className="sticky top-0 z-20">
             {hasGroupHeaders && (
-              <div className="grid grid-cols-[280px_1fr]">
+              <div className="flex">
                 <div
-                  className="sticky left-0 z-30 border-b border-r border-zinc-200 bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-500"
-                  style={{ width: LABEL_WIDTH }}
+                  className="sticky left-0 z-30 shrink-0 border-b border-r border-zinc-200 bg-zinc-100 px-2 py-1"
+                  style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                 />
                 <div className="flex border-b border-zinc-200 bg-zinc-100">
                   {groupHeaders.map((g) => (
@@ -385,25 +385,23 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-[280px_1fr]">
+            <div className="flex">
               <div
-                className="sticky left-0 z-30 border-b border-r border-zinc-200 bg-white px-2 py-1 text-xs font-semibold text-zinc-600"
-                style={{ width: LABEL_WIDTH }}
+                className="sticky left-0 z-30 shrink-0 border-b border-r border-zinc-200 bg-white px-2 py-1 text-xs font-semibold text-zinc-600"
+                style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
               >
                 Task
               </div>
-              <div className="border-b border-zinc-200">
-                <div className="flex">
-                  {columns.map((col) => (
-                    <div
-                      key={col.key}
-                      className="shrink-0 border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
-                      style={{ width: col.widthPx }}
-                    >
-                      {col.widthPx >= 16 ? col.label : ""}
-                    </div>
-                  ))}
-                </div>
+              <div className="flex border-b border-zinc-200">
+                {columns.map((col) => (
+                  <div
+                    key={col.key}
+                    className="shrink-0 border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
+                    style={{ width: col.widthPx }}
+                  >
+                    {col.widthPx >= 16 ? col.label : ""}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -418,10 +416,10 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
             const projectTasks = tasksByProject.get(project.id) ?? [];
             return (
               <div key={project.id}>
-                <div className="grid grid-cols-[280px_1fr] border-b border-zinc-200 bg-zinc-50">
+                <div className="flex border-b border-zinc-200">
                   <div
-                    className="sticky left-0 z-10 border-r border-zinc-200 bg-zinc-50 p-2"
-                    style={{ width: LABEL_WIDTH }}
+                    className="sticky left-0 z-10 shrink-0 border-r border-zinc-200 bg-zinc-50 p-2"
+                    style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   >
                     <p className="text-base font-semibold text-zinc-900">{project.name}</p>
                     {project.address ? (
@@ -430,7 +428,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                       <p className="text-xs text-zinc-400">No address</p>
                     )}
                   </div>
-                  <div className="h-10" />
+                  <div style={{ width: timelineWidth, minWidth: timelineWidth, height: 40 }} />
                 </div>
 
                 {projectTasks.map((task) => {
@@ -443,13 +441,13 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                   );
 
                   return (
-                    <div key={task.id} className="grid grid-cols-[280px_1fr] border-b border-zinc-100">
+                    <div key={task.id} className="flex border-b border-zinc-100">
                       <button
                         type="button"
                         title="View notes"
                         onClick={() => setNotesTask(task)}
-                        className="sticky left-0 z-10 w-full cursor-pointer border-r border-zinc-200 bg-white p-2 transition-colors hover:bg-zinc-50"
-                        style={{ textAlign: "right", fontSize: 13, width: LABEL_WIDTH }}
+                        className="sticky left-0 z-10 shrink-0 cursor-pointer border-r border-zinc-200 bg-white p-2 text-right transition-colors hover:bg-zinc-50"
+                        style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH, fontSize: 13 }}
                       >
                         <p className="font-medium text-zinc-900">{task.title}</p>
                         <p className="text-xs text-zinc-500">
@@ -458,14 +456,16 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                       </button>
                       <div
                         className="relative h-12"
-                        style={
-                          gridLinePx
+                        style={{
+                          width: timelineWidth,
+                          minWidth: timelineWidth,
+                          ...(gridLinePx
                             ? {
                                 backgroundImage: "linear-gradient(to right, #f4f4f5 1px, transparent 1px)",
                                 backgroundSize: `${gridLinePx}px 100%`,
                               }
-                            : undefined
-                        }
+                            : {}),
+                        }}
                       >
                         <div
                           data-task-id={task.id}
