@@ -226,11 +226,21 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     if (!el) return;
     const targetScroll = dayjs().diff(chartStart, "day") * pxPerDay;
     if (targetScroll <= 0) return;
-    const timer = setTimeout(() => {
+    let attempts = 0;
+    const tryScroll = () => {
+      attempts += 1;
+      if (attempts > 20) {
+        hasScrolledToToday.current = true;
+        return;
+      }
       el.scrollLeft = targetScroll;
-      hasScrolledToToday.current = true;
-    }, 100);
-    return () => clearTimeout(timer);
+      if (Math.abs(el.scrollLeft - targetScroll) < 50) {
+        hasScrolledToToday.current = true;
+      } else {
+        setTimeout(tryScroll, 50);
+      }
+    };
+    setTimeout(tryScroll, 150);
   }, [chartStart, pxPerDay, tasks.length, projects.length]);
 
   async function handlePointerDown(
