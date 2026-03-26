@@ -221,14 +221,16 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
 
   useEffect(() => {
     if (hasScrolledToToday.current) return;
+    if (tasks.length === 0 && projects.length === 0) return;
     const el = viewportRef.current;
     if (!el) return;
     const daysFromStart = dayjs().diff(chartStart, "day");
-    if (daysFromStart > 0) {
+    if (daysFromStart <= 0) return;
+    requestAnimationFrame(() => {
       el.scrollLeft = daysFromStart * pxPerDay;
       hasScrolledToToday.current = true;
-    }
-  });
+    });
+  }, [chartStart, pxPerDay, tasks.length, projects.length]);
 
   async function handlePointerDown(
     event: React.PointerEvent<HTMLElement>,
