@@ -387,6 +387,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     });
   }, []);
 
+  /** Fixed label column: keeps project controls aligned with timeline rows. */
+  const LABEL_WIDTH = 220;
   /** Tall enough for header rows (aligned across timeline). */
   const HEADER_ROW_H = 28;
   const PROJECT_ROW_H = 44;
@@ -443,7 +445,90 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
         </div>
       </div>
 
-      <div className="min-w-0 w-full overflow-x-scroll" ref={viewportRef}>
+      <div className="flex min-w-0">
+        <div
+          className="shrink-0 border-r border-zinc-200 bg-white"
+          style={{ width: LABEL_WIDTH }}
+        >
+          <div className="border-b border-zinc-200 bg-zinc-100" style={{ height: HEADER_ROW_H }} />
+          <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: HEADER_ROW_H }} />
+          <div className="border-b border-zinc-200 bg-white" style={{ height: HEADER_ROW_H }} />
+          {projects.map((project) => {
+            const projectTasks = tasksByProject.get(project.id) ?? [];
+            const isCollapsed = collapsedProjects.has(project.id);
+            return (
+              <div key={project.id}>
+                <div
+                  className="flex items-center overflow-hidden border-b border-zinc-200 bg-zinc-50 px-2"
+                  style={{ height: PROJECT_ROW_H }}
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900">{project.name}</span>
+                  <div className="ml-1 flex shrink-0 items-center gap-0.5">
+                    {onAddTask && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTaskModalProjectId(project.id);
+                          setTaskError(null);
+                          setTaskSaving(false);
+                          setTaskTitle("");
+                          setTaskStartDate("");
+                          setTaskDueDate("");
+                          setTaskNotes("");
+                          setTaskAssignedTo("");
+                        }}
+                        className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
+                        title="Add task"
+                      >
+                        +
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ok = window.confirm(
+                          `Delete project "${project.name}" and all of its tasks? This cannot be undone.`,
+                        );
+                        if (!ok) return;
+                        void onDeleteProject(project.id).catch((err: unknown) => {
+                          console.error(err);
+                          window.alert(
+                            err && typeof err === "object" && "message" in err
+                              ? String((err as { message?: string }).message)
+                              : "Could not delete project.",
+                          );
+                        });
+                      }}
+                      className="flex h-6 w-6 items-center justify-center rounded text-sm font-medium text-zinc-500 transition-colors hover:bg-red-100 hover:text-red-700"
+                      title="Delete project"
+                    >
+                      -
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleProjectCollapse(project.id)}
+                      className="flex h-6 w-6 items-center justify-center rounded text-xs text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
+                      title={isCollapsed ? "Show tasks" : "Hide tasks"}
+                    >
+                      {isCollapsed ? "\u25B6" : "\u25BC"}
+                    </button>
+                  </div>
+                </div>
+                {!isCollapsed &&
+                  projectTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="border-b border-zinc-100 bg-white"
+                      style={{ height: TASK_ROW_H }}
+                      aria-hidden
+                    />
+                  ))}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="min-w-0 flex-1 overflow-x-scroll" ref={viewportRef}>
           <div className="relative" style={{ width: timelineWidth }}>
             {(() => {
               const gridTemplate = columns.map((c) => `${c.widthPx}px`).join(" ");
@@ -511,62 +596,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
               const isCollapsed = collapsedProjects.has(project.id);
               return (
                 <div key={project.id}>
-                  <div
-                    className="relative flex items-stretch border-b border-zinc-200 bg-zinc-50"
-                    style={{ height: PROJECT_ROW_H }}
-                  >
-                    <div className="sticky left-0 z-20 flex max-w-[min(18rem,calc(100vw-3rem))] shrink-0 items-center gap-0.5 border-r border-zinc-200 bg-zinc-50 px-2 py-0.5 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
-                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900">{project.name}</span>
-                      {onAddTask && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTaskModalProjectId(project.id);
-                            setTaskError(null);
-                            setTaskSaving(false);
-                            setTaskTitle("");
-                            setTaskStartDate("");
-                            setTaskDueDate("");
-                            setTaskNotes("");
-                            setTaskAssignedTo("");
-                          }}
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
-                          title="Add task"
-                        >
-                          +
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const ok = window.confirm(
-                            `Delete project "${project.name}" and all of its tasks? This cannot be undone.`,
-                          );
-                          if (!ok) return;
-                          void onDeleteProject(project.id).catch((err: unknown) => {
-                            console.error(err);
-                            window.alert(
-                              err && typeof err === "object" && "message" in err
-                                ? String((err as { message?: string }).message)
-                                : "Could not delete project.",
-                            );
-                          });
-                        }}
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-sm font-medium text-zinc-500 transition-colors hover:bg-red-100 hover:text-red-700"
-                        title="Delete project"
-                      >
-                        -
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleProjectCollapse(project.id)}
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
-                        title={isCollapsed ? "Show tasks" : "Hide tasks"}
-                      >
-                        {isCollapsed ? "\u25B6" : "\u25BC"}
-                      </button>
-                    </div>
-                  </div>
+                  <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: PROJECT_ROW_H }} />
                   {!isCollapsed && projectTasks.map((task) => {
                     const start = dayjs(task.startDate || task.dueDate);
                     const due = dayjs(task.dueDate);
@@ -650,6 +680,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
             })}
           </div>
         </div>
+      </div>
 
       {projectModalOpen && (
         <div
