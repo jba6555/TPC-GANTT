@@ -51,6 +51,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const [zoom, setZoom] = useState<ZoomLevel>("week");
   const hasScrolledToToday = useRef(false);
   const scrollFractionRef = useRef<number | null>(null);
+  const scrollToTodayRef = useRef(false);
 
   const todayMarkerRef = useCallback((node: HTMLDivElement | null) => {
     if (!node || hasScrolledToToday.current) return;
@@ -93,9 +94,20 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   }, [handleWheel]);
 
   useEffect(() => {
-    if (scrollFractionRef.current === null) return;
     const el = viewportRef.current;
     if (!el) return;
+    if (scrollToTodayRef.current) {
+      scrollToTodayRef.current = false;
+      scrollFractionRef.current = null;
+      requestAnimationFrame(() => {
+        const marker = el.querySelector("[data-today-marker]") as HTMLElement | null;
+        if (marker) {
+          el.scrollLeft = marker.offsetLeft;
+        }
+      });
+      return;
+    }
+    if (scrollFractionRef.current === null) return;
     requestAnimationFrame(() => {
       const maxScroll = el.scrollWidth - el.clientWidth;
       if (maxScroll > 0) {
@@ -330,7 +342,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
               <button
                 key={level}
                 type="button"
-                onClick={() => setZoom(level)}
+                onClick={() => { scrollToTodayRef.current = true; setZoom(level); }}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                   zoom === level
                     ? "bg-white text-zinc-900 shadow-sm"
@@ -464,6 +476,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
 
             <div
               ref={todayMarkerRef}
+              data-today-marker
               className="pointer-events-none absolute z-10"
               style={{ left: todayPx, top: 0, bottom: 0, width: 2, backgroundColor: "#ef4444" }}
             />
