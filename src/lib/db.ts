@@ -445,16 +445,18 @@ export async function deleteProjectAndTasks(
     }
   }
 
-  for (let i = 0; i < taskRefs.length; i += FIRESTORE_BATCH_LIMIT) {
+  // Delete tasks and project in the same batch sequence so a typical project (≤500 ops)
+  // commits in one round-trip. Previously, task batches committed first and a separate
+  // deleteDoc(project) could fail, leaving an empty project row.
+  const refsToDelete = [...taskRefs, projectRef];
+  for (let i = 0; i < refsToDelete.length; i += FIRESTORE_BATCH_LIMIT) {
     const batch = writeBatch(db);
-    const chunk = taskRefs.slice(i, i + FIRESTORE_BATCH_LIMIT);
+    const chunk = refsToDelete.slice(i, i + FIRESTORE_BATCH_LIMIT);
     for (const ref of chunk) {
       batch.delete(ref);
     }
     await batch.commit();
   }
-
-  await deleteDoc(projectRef);
 
   if (actor) {
     await logChange({
