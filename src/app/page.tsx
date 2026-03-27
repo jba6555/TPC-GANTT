@@ -15,6 +15,7 @@ import {
   createTask,
   deleteProjectAndTasks,
   deleteTask,
+  fetchChangelogFromServer,
   revertChange,
   saveAllowedUsers,
   saveAssignedOptions,
@@ -123,6 +124,27 @@ export default function Home() {
     );
     return () => unsubscribe();
   }, [authReady, userId]);
+
+  useEffect(() => {
+    if (!historyOpen || !authReady || !userId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const entries = await fetchChangelogFromServer();
+        if (!cancelled) {
+          setChangelog(entries);
+          setChangelogError(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setChangelogError(e instanceof Error ? e.message : String(e));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [historyOpen, authReady, userId]);
 
   useEffect(() => {
     if (!authReady || !userId) return;

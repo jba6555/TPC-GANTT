@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  type DocumentData,
   doc,
   deleteDoc,
   getDoc,
@@ -31,11 +32,21 @@ function changelogCollectionRef() {
   return collection(getFirestoreDb(), "changelog");
 }
 
+function isFirestoreTimestampLike(value: unknown): value is { toDate: () => Date } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "toDate" in value &&
+    typeof (value as { toDate: unknown }).toDate === "function"
+  );
+}
+
 /** Firestore rejects `undefined` anywhere in a document unless settings opt out; strip recursively. */
 function omitUndefinedDeep(value: unknown): unknown {
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (value instanceof Timestamp) return value;
+  if (isFirestoreTimestampLike(value)) return value;
   if (typeof value !== "object") return value;
   if (Array.isArray(value)) {
     return value.map(omitUndefinedDeep).filter((item) => item !== undefined);
@@ -572,6 +583,40 @@ export type SubscribeToChangelogOptions = {
   onError?: (error: Error) => void;
 };
 
+function mapChangelogSnapshotDocs(
+  snapshot: { docs: Array<{ id: string; data: () => DocumentData }> },
+  maxEntries: number,
+): ChangelogEntry[] {
+  const rows = snapshot.docs.map((d) => {
+    const data = d.data();
+    const ts = data.timestamp as { toDate?: () => Date } | undefined;
+    const ms = ts?.toDate?.()?.getTime?.() ?? 0;
+    const entry: ChangelogEntry = {
+      id: d.id,
+      timestamp: ts?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
+      userId: data.userId ?? "",
+      userEmail: data.userEmail ?? "",
+      action: data.action ?? "update_task",
+      entityType: data.entityType ?? "task",
+      entityId: data.entityId ?? "",
+      projectName: data.projectName,
+      description: data.description ?? "",
+      before: data.before ?? null,
+      after: data.after ?? null,
+    };
+    return { ms, entry };
+  });
+  rows.sort((a, b) => b.ms - a.ms);
+  return rows.slice(0, maxEntries).map((r) => r.entry);
+}
+
+/** One-shot read from the server (bypasses stale empty local cache for the changelog collection). */
+export async function fetchChangelogFromServer(maxEntries = 200): Promise<ChangelogEntry[]> {
+  const changelogCollection = changelogCollectionRef();
+  const snapshot = await getDocsFromServer(changelogCollection);
+  return mapChangelogSnapshotDocs(snapshot, maxEntries);
+}
+
 export function subscribeToChangelog(
   callback: (entries: ChangelogEntry[]) => void,
   options?: SubscribeToChangelogOptions,
@@ -582,27 +627,26 @@ export function subscribeToChangelog(
   const changelogCollection = changelogCollectionRef();
   return onSnapshot(
     changelogCollection,
+    { includeMetadataChanges: true },
     (snapshot) => {
-      const rows = snapshot.docs.map((d) => {
-        const data = d.data();
-        const ms = data.timestamp?.toDate?.()?.getTime?.() ?? 0;
-        const entry: ChangelogEntry = {
-          id: d.id,
-          timestamp: data.timestamp?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
-          userId: data.userId ?? "",
-          userEmail: data.userEmail ?? "",
-          action: data.action ?? "update_task",
-          entityType: data.entityType ?? "task",
-          entityId: data.entityId ?? "",
-          projectName: data.projectName,
-          description: data.description ?? "",
-          before: data.before ?? null,
-          after: data.after ?? null,
-        };
-        return { ms, entry };
-      });
-      rows.sort((a, b) => b.ms - a.ms);
-      callback(rows.slice(0, maxEntries).map((r) => r.entry));
+      const push = (snap: typeof snapshot) => {
+        callback(mapChangelogSnapshotDocs(snap, maxEntries));
+      };
+
+      // IndexedDB cache can deliver an empty snapshot before the server sync; if so, read from server once.
+      if (snapshot.metadata.fromCache && snapshot.docs.length === 0) {
+        void getDocsFromServer(changelogCollection)
+          .then((serverSnap) => {
+            push(serverSnap);
+          })
+          .catch((err) => {
+            console.error("[Firestore] changelog server read:", err);
+            onError?.(err instanceof Error ? err : new Error(String(err)));
+          });
+        return;
+      }
+
+      push(snapshot);
     },
     (error) => {
       console.error("[Firestore] changelog listener:", error);
