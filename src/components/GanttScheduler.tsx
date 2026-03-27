@@ -465,30 +465,57 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         {/* Scrollable timeline */}
         <div className="min-w-0 flex-1 overflow-x-scroll" ref={viewportRef}>
           <div className="relative" style={{ width: timelineWidth }}>
-            {hasGroupHeaders && (
-              <div className="flex border-b border-zinc-200 bg-zinc-100">
-                {groupHeaders.map((g) => (
+            {(() => {
+              const gridTemplate = columns.map((c) => `${c.widthPx}px`).join(" ");
+              const groupSpans: { key: string; label: string; span: number; widthPx: number }[] = [];
+              if (hasGroupHeaders) {
+                let currentKey = "";
+                for (const col of columns) {
+                  if (!col.groupKey) continue;
+                  if (col.groupKey === currentKey) {
+                    groupSpans[groupSpans.length - 1].span += 1;
+                    groupSpans[groupSpans.length - 1].widthPx += col.widthPx;
+                  } else {
+                    currentKey = col.groupKey;
+                    groupSpans.push({ key: col.groupKey, label: col.groupLabel, span: 1, widthPx: col.widthPx });
+                  }
+                }
+              }
+              return (
+                <>
+                  {hasGroupHeaders && (
+                    <div
+                      className="grid border-b border-zinc-200 bg-zinc-100"
+                      style={{ gridTemplateColumns: gridTemplate }}
+                    >
+                      {groupSpans.map((g) => (
+                        <div
+                          key={g.key}
+                          className="overflow-hidden border-r border-zinc-300 px-1.5 py-1 text-center text-[11px] font-semibold text-zinc-700"
+                          style={{ gridColumn: `span ${g.span}` }}
+                        >
+                          {g.widthPx >= 30 ? g.label : ""}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div
-                    key={g.key}
-                    className="shrink-0 border-r border-zinc-200 px-1.5 py-1 text-center text-[11px] font-semibold text-zinc-700"
-                    style={{ width: g.widthPx }}
+                    className="grid border-b border-zinc-200"
+                    style={{ gridTemplateColumns: gridTemplate }}
                   >
-                    {g.widthPx >= 30 ? g.label : ""}
+                    {columns.map((col) => (
+                      <div
+                        key={col.key}
+                        className="overflow-hidden border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
+                        style={{ minWidth: 0 }}
+                      >
+                        {col.widthPx >= 16 ? col.label : ""}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-            <div className="flex border-b border-zinc-200">
-              {columns.map((col) => (
-                <div
-                  key={col.key}
-                  className="shrink-0 border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
-                  style={{ width: col.widthPx }}
-                >
-                  {col.widthPx >= 16 ? col.label : ""}
-                </div>
-              ))}
-            </div>
+                </>
+              );
+            })()}
 
             <div
               ref={todayMarkerRef}
