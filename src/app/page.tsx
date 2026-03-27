@@ -8,6 +8,7 @@ import GanttScheduler from "@/components/GanttScheduler";
 import { logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
 import HistoryLog from "@/components/HistoryLog";
 import AssignedToManager from "@/components/AssignedToManager";
+import CsvBulkUpload from "@/components/CsvBulkUpload";
 import {
   createProject,
   createTask,
@@ -118,15 +119,11 @@ export default function Home() {
     return () => unsubscribe();
   }, [authReady, userId]);
 
-  const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId),
-    [projects, selectedProjectId],
-  );
-
   const actor = useMemo(() => ({ userId, userEmail }), [userId, userEmail]);
 
   async function handleAddProject(input: ProjectInput) {
-    await createProject(userId, input, userEmail);
+    const id = await createProject(userId, input, userEmail);
+    setSelectedProjectId(id);
   }
 
   async function handleAddTaskForProject(
@@ -327,6 +324,7 @@ export default function Home() {
             </svg>
             History
           </button>
+          <CsvBulkUpload onBulkUpload={handleBulkUpload} />
           <button
             type="button"
             onClick={() => setAssignedToOpen((prev) => !prev)}
@@ -370,13 +368,11 @@ export default function Home() {
               selectedProjectId={selectedProjectId}
               assignedOptions={assignedOptions}
               onSelect={setSelectedProjectId}
-              onAddProject={handleAddProject}
               onDeleteProject={handleDeleteProject}
               onUpdateProject={handleUpdateProject}
               onAddTask={handleAddTaskForProject}
               onUpdateTaskDates={handleUpdateTaskDates}
               onUpdateTask={handleUpdateTask}
-              onBulkUpload={handleBulkUpload}
             />
           </div>
         ) : (
@@ -397,11 +393,13 @@ export default function Home() {
           </div>
         )}
         <section className="min-w-0 space-y-3">
-          {!selectedProject && (
+          {projects.length === 0 && (
             <div className="rounded-lg border border-zinc-200 bg-white p-3">
-              <h2 className="text-lg font-semibold text-zinc-900">Select a project</h2>
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-zinc-500">No projects yet. Add one to begin.</p>
+              <h2 className="text-lg font-semibold text-zinc-900">No projects yet</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm text-zinc-500">
+                  Create a project with <span className="font-medium text-zinc-700">+ Project</span> in the chart below, or seed an example.
+                </p>
                 <button
                   type="button"
                   onClick={handleSeedSample}
@@ -413,16 +411,15 @@ export default function Home() {
             </div>
           )}
 
-          {selectedProject && (
-            <GanttScheduler
-              projects={projects}
-              tasks={allTasks}
-              assignedOptions={assignedOptions}
-              onUpdateTaskDates={handleUpdateTaskDates}
-              onUpdateTask={handleUpdateTask}
-              onAddTask={handleAddTaskForProject}
-            />
-          )}
+          <GanttScheduler
+            projects={projects}
+            tasks={allTasks}
+            assignedOptions={assignedOptions}
+            onAddProject={handleAddProject}
+            onUpdateTaskDates={handleUpdateTaskDates}
+            onUpdateTask={handleUpdateTask}
+            onAddTask={handleAddTaskForProject}
+          />
         </section>
       </div>
 

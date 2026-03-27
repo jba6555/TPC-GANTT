@@ -2,13 +2,14 @@
 
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AssignedOption, AssignedTo, Project, ProjectTask } from "@/types/scheduler";
+import type { AssignedOption, AssignedTo, Project, ProjectInput, ProjectTask } from "@/types/scheduler";
 import { ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 interface GanttSchedulerProps {
   projects: Project[];
   tasks: ProjectTask[];
   assignedOptions?: AssignedOption[];
+  onAddProject: (input: ProjectInput) => Promise<void>;
   onUpdateTaskDates: (taskId: string, startDate?: string, dueDate?: string) => Promise<void>;
   onUpdateTask: (
     taskId: string,
@@ -55,7 +56,7 @@ interface SpanHeader {
 
 const ZOOM_KEYS: ZoomLevel[] = ZOOM_LEVELS.map((z) => z.key);
 
-export default function GanttScheduler({ projects, tasks, assignedOptions, onUpdateTaskDates, onUpdateTask, onAddTask }: GanttSchedulerProps) {
+export default function GanttScheduler({ projects, tasks, assignedOptions, onAddProject, onUpdateTaskDates, onUpdateTask, onAddTask }: GanttSchedulerProps) {
   const options = assignedOptions ?? ASSIGNED_OPTIONS;
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -81,6 +82,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
   const [taskAssignedTo, setTaskAssignedTo] = useState<AssignedTo>("");
   const [taskSaving, setTaskSaving] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
   const hasScrolledToToday = useRef(false);
   const scrollFractionRef = useRef<number | null>(null);
   const scrollToTodayRef = useRef(false);
@@ -430,7 +435,22 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
         <div className="shrink-0 border-r border-zinc-200" style={{ width: LABEL_WIDTH }}>
           <div className="flex items-center border-b border-zinc-200 bg-zinc-100 px-2 text-[11px]" style={{ height: HEADER_ROW_H }}>&nbsp;</div>
           <div className="flex items-center border-b border-zinc-200 bg-zinc-50 px-2 text-[11px]" style={{ height: HEADER_ROW_H }}>&nbsp;</div>
-          <div className="border-b border-zinc-200 bg-white" style={{ height: HEADER_ROW_H }} />
+          <div
+            className="flex items-center border-b border-zinc-200 bg-white px-1.5"
+            style={{ height: HEADER_ROW_H }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setProjectSaveError(null);
+                setNewProjectName("");
+                setProjectModalOpen(true);
+              }}
+              className="rounded px-1.5 py-0.5 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
+            >
+              + Project
+            </button>
+          </div>
           {projects.map((project) => {
             const projectTasks = tasksByProject.get(project.id) ?? [];
             const isCollapsed = collapsedProjects.has(project.id);
@@ -657,6 +677,91 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
           </div>
         </div>
       </div>
+
+      {projectModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setProjectModalOpen(false);
+              setProjectSaveError(null);
+              setNewProjectName("");
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <h3 className="text-lg font-semibold text-zinc-900">New project</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setProjectModalOpen(false);
+                  setProjectSaveError(null);
+                  setNewProjectName("");
+                }}
+                className="rounded px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
+              >
+                ✕
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmed = newProjectName.trim();
+                if (!trimmed) return;
+                setProjectSaveError(null);
+                setProjectSaving(true);
+                void onAddProject({ name: trimmed, address: "" })
+                  .then(() => {
+                    setProjectModalOpen(false);
+                    setNewProjectName("");
+                    setProjectSaveError(null);
+                  })
+                  .catch((err: unknown) => {
+                    const code =
+                      err && typeof err === "object" && "code" in err
+                        ? String((err as { code?: string }).code)
+                        : "";
+                    const message =
+                      err && typeof err === "object" && "message" in err
+                        ? String((err as { message?: string }).message)
+                        : "";
+                    setProjectSaveError(
+                      code === "permission-denied"
+                        ? "Firestore blocked the save. Check Firestore rules and that you are signed in."
+                        : message || "Could not save project.",
+                    );
+                    console.error(err);
+                  })
+                  .finally(() => setProjectSaving(false));
+              }}
+              className="space-y-3"
+            >
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700">Project name</label>
+                <input
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  required
+                  autoFocus
+                  className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  placeholder="Name"
+                />
+              </div>
+              {projectSaveError && <p className="text-xs text-red-600">{projectSaveError}</p>}
+              <button
+                type="submit"
+                disabled={projectSaving}
+                className="w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {projectSaving ? "Saving…" : "Create project"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {taskModalProjectId && (
         <div

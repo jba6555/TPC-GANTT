@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { AssignedOption, BulkImportCsvRow, Project, ProjectTask, AssignedTo } from "@/types/scheduler";
+import type { AssignedOption, Project, ProjectTask, AssignedTo } from "@/types/scheduler";
 import { ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 interface ProjectListProps {
@@ -10,12 +10,6 @@ interface ProjectListProps {
   selectedProjectId?: string;
   assignedOptions?: AssignedOption[];
   onSelect: (projectId: string) => void;
-  onAddProject: (input: {
-    name: string;
-    address: string;
-    contractStart?: string;
-    contractEnd?: string;
-  }) => Promise<void>;
   onDeleteProject: (projectId: string) => Promise<void>;
   onUpdateProject: (projectId: string, input: {
     name: string;
@@ -35,7 +29,6 @@ interface ProjectListProps {
     taskId: string,
     fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
   ) => Promise<void>;
-  onBulkUpload: (rows: BulkImportCsvRow[]) => Promise<{ createdProjects: number; createdTasks: number }>;
 }
 
 export default function ProjectList({
@@ -44,22 +37,13 @@ export default function ProjectList({
   selectedProjectId,
   assignedOptions,
   onSelect,
-  onAddProject,
   onDeleteProject,
   onUpdateProject,
   onAddTask,
   onUpdateTaskDates,
   onUpdateTask,
-  onBulkUpload,
 }: ProjectListProps) {
   const options = assignedOptions ?? ASSIGNED_OPTIONS;
-  const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [contractStart, setContractStart] = useState("");
-  const [contractEnd, setContractEnd] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -109,196 +93,10 @@ export default function ProjectList({
   const [notesError, setNotesError] = useState<string | null>(null);
   const [taskSaving, setTaskSaving] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadResult, setUploadResult] = useState<string | null>(null);
-
-  function parseCsvLine(line: string) {
-    const cells: string[] = [];
-    let value = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i += 1) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          value += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === "," && !inQuotes) {
-        cells.push(value.trim());
-        value = "";
-      } else {
-        value += ch;
-      }
-    }
-    cells.push(value.trim());
-    return cells;
-  }
-
-  function normalizeHeader(text: string) {
-    return text.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  }
-
-  function parseCsvRows(csvText: string) {
-    const lines = csvText
-      .replace(/\r/g, "")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (lines.length < 2) {
-      throw new Error("CSV must include a header row and at least one data row.");
-    }
-
-    const headerCells = parseCsvLine(lines[0]).map(normalizeHeader);
-    const getIndex = (...aliases: string[]) =>
-      headerCells.findIndex((header) => aliases.includes(header));
-
-    const projectNameIdx = getIndex("project_name", "project", "name");
-    const addressIdx = getIndex("address");
-    const contractStartIdx = getIndex("contract_start", "start_contract");
-    const contractEndIdx = getIndex("contract_end", "end_contract");
-    const taskTitleIdx = getIndex("task_title", "task", "title");
-    const taskStartIdx = getIndex("task_start", "task_start_date", "start_date");
-    const taskDueIdx = getIndex("task_due", "task_due_date", "due_date");
-    const notesIdx = getIndex("task_notes", "notes");
-
-    if (projectNameIdx < 0) {
-      throw new Error("CSV is missing required column: project_name");
-    }
-
-    const rows: BulkImportCsvRow[] = [];
-    for (let i = 1; i < lines.length; i += 1) {
-      const cells = parseCsvLine(lines[i]);
-      const projectName = cells[projectNameIdx]?.trim() ?? "";
-      if (!projectName) {
-        throw new Error(`Row ${i + 1}: project_name is required.`);
-      }
-
-      const taskTitle = taskTitleIdx >= 0 ? cells[taskTitleIdx]?.trim() || undefined : undefined;
-      const taskStartDate = taskStartIdx >= 0 ? cells[taskStartIdx]?.trim() || undefined : undefined;
-      const taskDueDate = taskDueIdx >= 0 ? cells[taskDueIdx]?.trim() || undefined : undefined;
-      if (taskTitle && !taskStartDate && !taskDueDate) {
-        throw new Error(`Row ${i + 1}: task row needs task_start or task_due date.`);
-      }
-
-      rows.push({
-        projectName,
-        address: addressIdx >= 0 ? cells[addressIdx]?.trim() || undefined : undefined,
-        contractStart: contractStartIdx >= 0 ? cells[contractStartIdx]?.trim() || undefined : undefined,
-        contractEnd: contractEndIdx >= 0 ? cells[contractEndIdx]?.trim() || undefined : undefined,
-        taskTitle,
-        taskStartDate,
-        taskDueDate,
-        taskNotes: notesIdx >= 0 ? cells[notesIdx]?.trim() || undefined : undefined,
-      });
-    }
-    return rows;
-  }
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setSaveError(null);
-    setSubmitting(true);
-    const safety = window.setTimeout(() => setSubmitting(false), 5000);
-    void onAddProject({
-      name: name.trim(),
-      address: address.trim(),
-      contractStart: contractStart || undefined,
-      contractEnd: contractEnd || undefined,
-    })
-      .then(() => {
-        setName("");
-        setAddress("");
-        setContractStart("");
-        setContractEnd("");
-        setShowForm(false);
-      })
-      .catch((err: unknown) => {
-        const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code) : "";
-        const message =
-          err && typeof err === "object" && "message" in err ? String((err as { message?: string }).message) : "";
-        setSaveError(
-          code === "permission-denied"
-            ? "Firestore blocked the save. Check Firestore rules and that you are signed in."
-            : message || "Could not save project. Check your network and Firebase console (Firestore enabled).",
-        );
-        console.error(err);
-      })
-      .finally(() => {
-        window.clearTimeout(safety);
-        setSubmitting(false);
-      });
-  }
 
   return (
     <aside className="w-full min-w-0 max-w-md rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-zinc-900">Projects</h2>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setUploadError(null);
-              setUploadResult(null);
-              setShowUploadModal(true);
-            }}
-            className="rounded-md bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
-          >
-            Upload CSV
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowForm((prev) => !prev)}
-            className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            + Project
-          </button>
-        </div>
-      </div>
-
-      {showForm && (
-        <form onSubmit={handleSubmit} className="mb-4 space-y-2 rounded-md border p-2">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Project name"
-            className="w-full rounded border px-2 py-1 text-sm"
-            required
-          />
-          <input
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="Address"
-            className="w-full rounded border px-2 py-1 text-sm"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              type="date"
-              value={contractStart}
-              onChange={(e) => setContractStart(e.target.value)}
-              className="w-full rounded border px-2 py-1 text-sm"
-            />
-            <input
-              type="date"
-              value={contractEnd}
-              onChange={(e) => setContractEnd(e.target.value)}
-              className="w-full rounded border px-2 py-1 text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded bg-zinc-800 py-1 text-sm font-medium text-white disabled:opacity-60"
-          >
-            {submitting ? "Saving..." : "Save Project"}
-          </button>
-          {saveError && <p className="text-xs text-red-600">{saveError}</p>}
-        </form>
-      )}
+      <h2 className="mb-3 text-lg font-semibold text-zinc-900">Projects</h2>
 
       <ul className="space-y-2">
         {visibleProjects.map((project) => (
@@ -512,79 +310,6 @@ export default function ProjectList({
       </ul>
 
       {deleteError && <p className="mt-3 text-xs text-red-600">{deleteError}</p>}
-
-      {showUploadModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="csv-upload-title"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setShowUploadModal(false);
-          }}
-        >
-          <div className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <h3 id="csv-upload-title" className="text-lg font-semibold text-zinc-900">
-                  Bulk Upload CSV
-                </h3>
-                <p className="text-sm text-zinc-600">
-                  Required column: project_name
-                </p>
-                <p className="text-xs text-zinc-500">
-                  Optional: address, contract_start, contract_end, task_title, task_start, task_due, task_notes
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowUploadModal(false)}
-                className="rounded px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
-              >
-                ✕
-              </button>
-            </div>
-
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              disabled={uploading}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setUploadError(null);
-                setUploadResult(null);
-                setUploading(true);
-                void file
-                  .text()
-                  .then((text) => parseCsvRows(text))
-                  .then((rows) => onBulkUpload(rows))
-                  .then((result) => {
-                    setUploadResult(
-                      `Imported ${result.createdProjects} project(s) and ${result.createdTasks} task(s).`,
-                    );
-                  })
-                  .catch((err: unknown) => {
-                    const message =
-                      err && typeof err === "object" && "message" in err
-                        ? String((err as { message?: string }).message)
-                        : "";
-                    setUploadError(message || "Could not import CSV.");
-                    console.error(err);
-                  })
-                  .finally(() => {
-                    setUploading(false);
-                    e.currentTarget.value = "";
-                  });
-              }}
-              className="w-full rounded border border-zinc-200 p-2 text-sm"
-            />
-
-            {uploadError && <p className="mt-2 text-xs text-red-600">{uploadError}</p>}
-            {uploadResult && <p className="mt-2 text-xs text-green-700">{uploadResult}</p>}
-          </div>
-        </div>
-      )}
 
       {taskModalProjectId && (
         <div

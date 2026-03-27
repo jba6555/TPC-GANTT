@@ -1,0 +1,15 @@
+---
+description: After code changes, deploy to Vercel by committing and pushing to origin
+alwaysApply: true
+---
+
+# Deploy to Vercel after every change
+
+This project is deployed on Vercel from git. After **any** substantive edit (not trivial whitespace-only fixes unless requested):
+
+1. Run `npm run build` if the change could break the build; fix errors before deploying.
+2. `git add` all changed and new files needed for the app.
+3. `git commit` with a clear message.
+4. `git push` to the branch Vercel deploys from (typically `main` on `origin`).
+
+Do **not** ask the user to push or deploy—do it unless push fails (then report the error). Never claim Vercel is updated until push succeeds.
