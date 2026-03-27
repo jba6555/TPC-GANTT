@@ -124,24 +124,39 @@ export default function LoginPage() {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (!authUser) {
       setAllowedEmails([]);
       setAllowedReady(false);
+      setAllowedUsersLoadError(false);
       return;
     }
     setAllowedReady(false);
-    const unsub = subscribeToAllowedUsers((emails) => {
-      setAllowedEmails(emails);
-      setAllowedReady(true);
-    });
+    setAllowedUsersLoadError(false);
+    const unsub = subscribeToAllowedUsers(
+      (emails) => {
+        setAllowedEmails(emails);
+        setAllowedReady(true);
+      },
+      () => {
+        setAllowedUsersLoadError(true);
+        setAllowedReady(true);
+      },
+    );
     return () => unsub();
   }, [authUser]);
 
   useEffect(() => {
     if (!authUser || !allowedReady) return;
+    if (allowedUsersLoadError) {
+      void (async () => {
+        await logout();
+        setError("Could not verify access. Check your connection and try again.");
+      })();
+      return;
+    }
     if (!isEmailAllowlisted(authUser.email, allowedEmails)) {
       void (async () => {
         await logout();
@@ -152,7 +167,7 @@ export default function LoginPage() {
       return;
     }
     router.replace("/");
-  }, [authUser, allowedReady, allowedEmails, router]);
+  }, [authUser, allowedReady, allowedEmails, allowedUsersLoadError, router]);
 
   async function handleLogin() {
     setError(null);

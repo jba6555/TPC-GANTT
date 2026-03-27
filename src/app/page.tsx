@@ -39,6 +39,7 @@ export default function Home() {
   const [usersOpen, setUsersOpen] = useState(false);
   const [allowedUserEmails, setAllowedUserEmails] = useState<string[]>([]);
   const [allowedUsersReady, setAllowedUsersReady] = useState(false);
+  const [allowedUsersLoadError, setAllowedUsersLoadError] = useState(false);
   const [assignedOptions, setAssignedOptions] = useState<AssignedOption[]>(DEFAULT_ASSIGNED_OPTIONS);
   const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
@@ -117,24 +118,39 @@ export default function Home() {
     if (!authReady || !userId) {
       setAllowedUserEmails([]);
       setAllowedUsersReady(false);
+      setAllowedUsersLoadError(false);
       return;
     }
     setAllowedUsersReady(false);
-    const unsubscribe = subscribeToAllowedUsers((emails) => {
-      setAllowedUserEmails(emails);
-      setAllowedUsersReady(true);
-    });
+    setAllowedUsersLoadError(false);
+    const unsubscribe = subscribeToAllowedUsers(
+      (emails) => {
+        setAllowedUserEmails(emails);
+        setAllowedUsersReady(true);
+      },
+      () => {
+        setAllowedUsersLoadError(true);
+        setAllowedUsersReady(true);
+      },
+    );
     return () => unsubscribe();
   }, [authReady, userId]);
 
   useEffect(() => {
     if (!authReady || !userId || !allowedUsersReady || !userEmail) return;
+    if (allowedUsersLoadError) {
+      void (async () => {
+        await logout();
+        router.replace("/login");
+      })();
+      return;
+    }
     if (isEmailAllowlisted(userEmail, allowedUserEmails)) return;
     void (async () => {
       await logout();
       router.replace("/login?denied=1");
     })();
-  }, [authReady, userId, userEmail, allowedUsersReady, allowedUserEmails, router]);
+  }, [authReady, userId, userEmail, allowedUsersReady, allowedUserEmails, allowedUsersLoadError, router]);
 
   const actor = useMemo(() => ({ userId, userEmail }), [userId, userEmail]);
 
