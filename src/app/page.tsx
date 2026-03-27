@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import dayjs from "dayjs";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ProjectList from "@/components/ProjectList";
 import GanttScheduler from "@/components/GanttScheduler";
@@ -25,7 +26,24 @@ export default function Home() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [allTasks, setAllTasks] = useState<ProjectTask[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
+  const [appTitle, setAppTitle] = useState(DEFAULT_TITLE);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    const saved = localStorage.getItem("app-title");
+    if (saved) setAppTitle(saved);
+  }, []);
+
+  useEffect(() => {
+    if (editingTitle) {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }
+  }, [editingTitle]);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -89,18 +107,21 @@ export default function Home() {
     projectId: string,
     input: {
       title: string;
-      startDate: string;
-      dueDate: string;
+      startDate?: string;
+      dueDate?: string;
       notes?: string;
+      assignedTo?: string;
     },
   ) {
+    const date = input.startDate || input.dueDate || dayjs().format("YYYY-MM-DD");
     const sortOrder = allTasks.filter((t) => t.projectId === projectId).length;
     await createTask(projectId, {
       title: input.title,
       type: "task",
-      startDate: input.startDate,
-      dueDate: input.dueDate,
+      startDate: input.startDate || date,
+      dueDate: input.dueDate || date,
       notes: input.notes,
+      assignedTo: (input.assignedTo as import("@/types/scheduler").AssignedTo) || undefined,
     }, sortOrder);
   }
 
@@ -231,7 +252,52 @@ export default function Home() {
     <main className="min-h-screen bg-zinc-100 p-4">
       <header className="mb-4 flex items-center justify-between rounded-lg border border-zinc-200 bg-white p-3">
         <div>
-          <h1 className="text-xl font-bold text-zinc-900">Real Estate Gantt Scheduler</h1>
+          {editingTitle ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const value = titleDraft.trim() || DEFAULT_TITLE;
+                setAppTitle(value);
+                localStorage.setItem("app-title", value);
+                setEditingTitle(false);
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                ref={titleInputRef}
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={() => {
+                  const value = titleDraft.trim() || DEFAULT_TITLE;
+                  setAppTitle(value);
+                  localStorage.setItem("app-title", value);
+                  setEditingTitle(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setEditingTitle(false);
+                  }
+                }}
+                className="rounded border border-zinc-300 px-2 py-0.5 text-xl font-bold text-zinc-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setTitleDraft(appTitle);
+                setEditingTitle(true);
+              }}
+              className="group flex items-center gap-1.5 rounded px-1 -ml-1 transition-colors hover:bg-zinc-50"
+              title="Click to edit title"
+            >
+              <h1 className="text-xl font-bold text-zinc-900">{appTitle}</h1>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100">
+                <path d="M13.488 2.513a1.75 1.75 0 0 0-2.475 0L6.75 6.774a2.75 2.75 0 0 0-.596.892l-.848 2.047a.75.75 0 0 0 .98.98l2.047-.848a2.75 2.75 0 0 0 .892-.596l4.261-4.262a1.75 1.75 0 0 0 0-2.474Z" />
+                <path d="M4.75 3.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h6.5c.69 0 1.25-.56 1.25-1.25V9A.75.75 0 0 1 14 9v2.25A2.75 2.75 0 0 1 11.25 14h-6.5A2.75 2.75 0 0 1 2 11.25v-6.5A2.75 2.75 0 0 1 4.75 2H7a.75.75 0 0 1 0 1.5H4.75Z" />
+              </svg>
+            </button>
+          )}
           <p className="text-sm text-zinc-600">{userEmail}</p>
           <p className="text-xs text-zinc-400">Version: {APP_VERSION}</p>
         </div>

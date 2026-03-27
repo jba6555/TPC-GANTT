@@ -3,6 +3,7 @@
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Project, ProjectTask } from "@/types/scheduler";
+import { ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 interface GanttSchedulerProps {
   projects: Project[];
@@ -333,8 +334,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
 
   return (
     <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-base font-semibold text-zinc-900">Gantt Timeline</h3>
+      <div className="mb-2 flex items-center justify-end gap-2">
         <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
           {(["week", "month", "year"] as ZoomLevel[]).map((level) => {
             const label = ZOOM_LEVELS.find((z) => z.key === level)!.label;
@@ -511,10 +511,17 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                       >
                         <div
                           data-task-id={task.id}
-                          className={`absolute top-2 flex h-8 items-center rounded ${
-                            dragTaskId === task.id ? "bg-blue-700" : "bg-blue-600"
-                          } text-white ${pending === task.id ? "opacity-60" : ""}`}
-                          style={{ left, width: barWidth, cursor: "grab" }}
+                          className={`absolute top-2 flex h-8 items-center rounded text-white ${pending === task.id ? "opacity-60" : ""}`}
+                          style={{
+                            left,
+                            width: barWidth,
+                            cursor: "grab",
+                            backgroundColor: (() => {
+                              const opt = task.assignedTo ? ASSIGNED_OPTIONS.find((o) => o.value === task.assignedTo) : null;
+                              const base = opt?.color || "#3b82f6";
+                              return dragTaskId === task.id ? base : base;
+                            })(),
+                          }}
                           onClick={() => {
                             if (!dragOccurredRef.current) {
                               setNotesTask(task);
@@ -523,7 +530,8 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                         >
                           <div
                             onPointerDown={(e) => handlePointerDown(e, task, "resizeStart")}
-                            className="h-full w-2 cursor-ew-resize rounded-l bg-blue-800"
+                            className="h-full w-2 cursor-ew-resize rounded-l"
+                            style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
                           />
                           <div
                             onPointerDown={(e) => handlePointerDown(e, task, "move")}
@@ -534,7 +542,8 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                           </div>
                           <div
                             onPointerDown={(e) => handlePointerDown(e, task, "resizeEnd")}
-                            className="h-full w-2 cursor-ew-resize rounded-r bg-blue-800"
+                            className="h-full w-2 cursor-ew-resize rounded-r"
+                            style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
                           />
                         </div>
                       </div>

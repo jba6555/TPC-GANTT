@@ -3,8 +3,11 @@ import {
   collection,
   doc,
   deleteDoc,
+  getDoc,
   getDocsFromServer,
+  limit as firestoreLimit,
   onSnapshot,
+  orderBy,
   query,
   serverTimestamp,
   updateDoc,
@@ -12,7 +15,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
-import type { Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
+import type { ChangeAction, ChangelogEntry, Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
 
 function projectsCollectionRef() {
   return collection(getFirestoreDb(), "projects");
@@ -20,6 +23,31 @@ function projectsCollectionRef() {
 
 function tasksCollectionRef() {
   return collection(getFirestoreDb(), "tasks");
+}
+
+function changelogCollectionRef() {
+  return collection(getFirestoreDb(), "changelog");
+}
+
+async function logChange(entry: {
+  userId: string;
+  userEmail: string;
+  action: ChangeAction;
+  entityType: "project" | "task";
+  entityId: string;
+  projectName?: string;
+  description: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}) {
+  try {
+    await addDoc(changelogCollectionRef(), {
+      ...entry,
+      timestamp: serverTimestamp(),
+    });
+  } catch (e) {
+    console.error("[Changelog] failed to log change:", e);
+  }
 }
 
 export function subscribeToProjects(
@@ -129,23 +157,52 @@ export function subscribeToAllTasks(
   );
 }
 
-export async function createProject(userId: string, input: ProjectInput) {
+export async function createProject(userId: string, input: ProjectInput, userEmail = "") {
   const docRef = await addDoc(projectsCollectionRef(), {
     ...input,
     createdBy: userId,
     createdAt: serverTimestamp(),
   });
+  await logChange({
+    userId,
+    userEmail,
+    action: "create_project",
+    entityType: "project",
+    entityId: docRef.id,
+    projectName: input.name,
+    description: `Created project "${input.name}"`,
+    before: null,
+    after: { id: docRef.id, ...input },
+  });
   return docRef.id;
 }
 
-export async function createTask(projectId: string, input: TaskInput, sortOrder: number) {
-  await addDoc(tasksCollectionRef(), {
+export async function createTask(
+  projectId: string,
+  input: TaskInput,
+  sortOrder: number,
+  actor?: { userId: string; userEmail: string; projectName?: string },
+) {
+  const docRef = await addDoc(tasksCollectionRef(), {
     ...input,
     projectId,
     status: "not_started",
     sortOrder,
     updatedAt: serverTimestamp(),
   });
+  if (actor) {
+    await logChange({
+      userId: actor.userId,
+      userEmail: actor.userEmail,
+      action: "create_task",
+      entityType: "task",
+      entityId: docRef.id,
+      projectName: actor.projectName,
+      description: `Created task "${input.title}"`,
+      before: null,
+      after: { id: docRef.id, projectId, ...input, sortOrder },
+    });
+  }
 }
 
 export async function updateTaskDates(taskId: string, startDate?: string, dueDate?: string) {

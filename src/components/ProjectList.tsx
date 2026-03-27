@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { BulkImportCsvRow, Project, ProjectTask } from "@/types/scheduler";
+import type { BulkImportCsvRow, Project, ProjectTask, AssignedTo } from "@/types/scheduler";
+import { ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 interface ProjectListProps {
   projects: Project[];
@@ -23,9 +24,10 @@ interface ProjectListProps {
   }) => Promise<void>;
   onAddTask: (projectId: string, input: {
     title: string;
-    startDate: string;
-    dueDate: string;
+    startDate?: string;
+    dueDate?: string;
     notes?: string;
+    assignedTo?: string;
   }) => Promise<void>;
   onUpdateTaskDates: (taskId: string, startDate?: string, dueDate?: string) => Promise<void>;
   onBulkUpload: (rows: BulkImportCsvRow[]) => Promise<{ createdProjects: number; createdTasks: number }>;
@@ -87,6 +89,7 @@ export default function ProjectList({
   const [taskStartDate, setTaskStartDate] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
   const [taskNotes, setTaskNotes] = useState("");
+  const [taskAssignedTo, setTaskAssignedTo] = useState<AssignedTo>("");
   const [notesTask, setNotesTask] = useState<ProjectTask | null>(null);
   const [notesStartDate, setNotesStartDate] = useState("");
   const [notesDueDate, setNotesDueDate] = useState("");
@@ -603,7 +606,6 @@ export default function ProjectList({
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!taskTitle.trim()) return;
-                if (!taskStartDate || !taskDueDate) return;
                 setTaskError(null);
                 setTaskSaving(true);
                 const projectId = taskModalProjectId;
@@ -617,13 +619,15 @@ export default function ProjectList({
                   setTaskStartDate("");
                   setTaskDueDate("");
                   setTaskNotes("");
+                  setTaskAssignedTo("");
                 }, 4000);
 
                 void onAddTask(projectId, {
                   title: taskTitle.trim(),
-                  startDate: taskStartDate,
-                  dueDate: taskDueDate,
+                  startDate: taskStartDate || undefined,
+                  dueDate: taskDueDate || undefined,
                   notes: taskNotes.trim() || undefined,
+                  assignedTo: taskAssignedTo || undefined,
                 })
                   .then(() => {
                     if (didTimeout) return;
@@ -633,6 +637,7 @@ export default function ProjectList({
                     setTaskStartDate("");
                     setTaskDueDate("");
                     setTaskNotes("");
+                    setTaskAssignedTo("");
                     setTaskError(null);
                   })
                   .catch((err: unknown) => {
@@ -669,7 +674,6 @@ export default function ProjectList({
                     type="date"
                     value={taskStartDate}
                     onChange={(e) => setTaskStartDate(e.target.value)}
-                    required
                     className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
                   />
                 </div>
@@ -679,10 +683,33 @@ export default function ProjectList({
                     type="date"
                     value={taskDueDate}
                     onChange={(e) => setTaskDueDate(e.target.value)}
-                    required
                     className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700">Assigned To</label>
+                <select
+                  value={taskAssignedTo}
+                  onChange={(e) => setTaskAssignedTo(e.target.value as AssignedTo)}
+                  className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
+                >
+                  {ASSIGNED_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label || "(none)"}
+                    </option>
+                  ))}
+                </select>
+                {taskAssignedTo && (
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <div
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: ASSIGNED_OPTIONS.find((o) => o.value === taskAssignedTo)?.color }}
+                    />
+                    <span className="text-xs text-zinc-500">Bar color preview</span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
