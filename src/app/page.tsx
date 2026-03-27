@@ -51,6 +51,8 @@ export default function Home() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
+  /** While deleting, Firestore snapshots can replay stale cache; filter these ids out until the write settles. */
+  const deletingProjectIdsRef = useRef<Set<string>>(new Set());
   const router = useRouter();
 
   useEffect(() => {
@@ -96,13 +98,17 @@ export default function Home() {
 
   useEffect(() => {
     if (!authReady || !userId) return;
-    const unsubscribe = subscribeToProjects(setProjects);
+    const unsubscribe = subscribeToProjects((incoming) => {
+      setProjects(incoming.filter((p) => !deletingProjectIdsRef.current.has(p.id)));
+    });
     return () => unsubscribe();
   }, [authReady, userId]);
 
   useEffect(() => {
     if (!authReady || !userId) return;
-    const unsubscribe = subscribeToAllTasks(setAllTasks);
+    const unsubscribe = subscribeToAllTasks((incoming) => {
+      setAllTasks(incoming.filter((t) => !deletingProjectIdsRef.current.has(t.projectId)));
+    });
     return () => unsubscribe();
   }, [authReady, userId]);
 
@@ -200,10 +206,27 @@ export default function Home() {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return;
     const tasks = allTasks.filter((t) => t.projectId === projectId);
-    await deleteProjectAndTasks(projectId, actor, { project, tasks });
-    // Apply locally so the row disappears even if the projects snapshot briefly replays a stale cache.
+
+    deletingProjectIdsRef.current.add(projectId);
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     setAllTasks((prev) => prev.filter((t) => t.projectId !== projectId));
+
+    try {
+      await deleteProjectAndTasks(projectId, actor, { project, tasks });
+      window.setTimeout(() => {
+        deletingProjectIdsRef.current.delete(projectId);
+      }, 2500);
+    } catch (err) {
+      deletingProjectIdsRef.current.delete(projectId);
+      setProjects((prev) => {
+        if (prev.some((p) => p.id === projectId)) return prev;
+        return [...prev, project].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+      });
+      setAllTasks((prev) => [...prev, ...tasks]);
+      throw err;
+    }
   }
 
   async function handleAddTaskForProject(
