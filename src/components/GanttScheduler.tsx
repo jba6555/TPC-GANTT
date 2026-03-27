@@ -515,14 +515,29 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   </div>
                 </div>
                 {!isCollapsed &&
-                  projectTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="border-b border-zinc-100 bg-white"
-                      style={{ height: TASK_ROW_H }}
-                      aria-hidden
-                    />
-                  ))}
+                  projectTasks.map((task) => {
+                    const start = dayjs(task.startDate || task.dueDate);
+                    const due = dayjs(task.dueDate);
+                    return (
+                      <button
+                        key={task.id}
+                        type="button"
+                        title="View notes"
+                        onClick={() => openTaskEditor(task)}
+                        className="flex w-full cursor-pointer items-center overflow-hidden border-b border-zinc-100 bg-white px-2 text-left transition-colors hover:bg-zinc-50"
+                        style={{ height: TASK_ROW_H }}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-medium text-zinc-900">{task.title}</p>
+                          <p className="text-[10px] text-zinc-400">
+                            {start.isSame(due, "day")
+                              ? start.format("MM/DD/YY")
+                              : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
               </div>
             );
           })}
