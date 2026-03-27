@@ -110,6 +110,7 @@ export function subscribeToTasks(
             status: data.status ?? "not_started",
             sortOrder: data.sortOrder ?? 0,
             notes: data.notes,
+            assignedTo: data.assignedTo,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
           } as ProjectTask;
         })
@@ -144,6 +145,7 @@ export function subscribeToAllTasks(
             status: data.status ?? "not_started",
             sortOrder: data.sortOrder ?? 0,
             notes: data.notes,
+            assignedTo: data.assignedTo,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
           } as ProjectTask;
         })
@@ -205,18 +207,47 @@ export async function createTask(
   }
 }
 
-export async function updateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
-  const taskRef = doc(getFirestoreDb(), "tasks", taskId);
-  const patch: Record<string, unknown> = {
-    updatedAt: serverTimestamp(),
-  };
-  if (startDate !== undefined) {
-    patch.startDate = startDate;
+export async function updateTaskDates(
+  taskId: string,
+  startDate?: string,
+  dueDate?: string,
+  actor?: { userId: string; userEmail: string },
+) {
+  const db = getFirestoreDb();
+  const taskRef = doc(db, "tasks", taskId);
+
+  let beforeData: Record<string, unknown> | null = null;
+  let taskTitle = "task";
+  let projectName: string | undefined;
+  if (actor) {
+    const snap = await getDoc(taskRef);
+    if (snap.exists()) {
+      const d = snap.data();
+      beforeData = { startDate: d.startDate, dueDate: d.dueDate };
+      taskTitle = d.title ?? "task";
+      const projSnap = await getDoc(doc(db, "projects", d.projectId ?? ""));
+      projectName = projSnap.exists() ? (projSnap.data().name as string) : undefined;
+    }
   }
-  if (dueDate !== undefined) {
-    patch.dueDate = dueDate;
-  }
+
+  const patch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+  if (startDate !== undefined) patch.startDate = startDate;
+  if (dueDate !== undefined) patch.dueDate = dueDate;
   await updateDoc(taskRef, patch);
+
+  if (actor) {
+    await logChange({
+      userId: actor.userId,
+      userEmail: actor.userEmail,
+      action: "update_task",
+      entityType: "task",
+      entityId: taskId,
+      projectName,
+      description: `Updated dates on "${taskTitle}"`,
+      before: beforeData,
+      after: { startDate, dueDate },
+    });
+  }
 }
 
 const FIRESTORE_BATCH_LIMIT = 500;
@@ -226,13 +257,35 @@ const FIRESTORE_BATCH_LIMIT = 500;
  * local cache, and batched writes so many task deletes are one round-trip each
  * instead of N parallel deleteDoc calls.
  */
-export async function deleteProjectAndTasks(projectId: string) {
+export async function deleteProjectAndTasks(
+  projectId: string,
+  actor?: { userId: string; userEmail: string },
+) {
   const db = getFirestoreDb();
   const projectRef = doc(db, "projects", projectId);
   const tasksQuery = query(tasksCollectionRef(), where("projectId", "==", projectId));
 
+  let projectBefore: Record<string, unknown> | null = null;
+  let projectName: string | undefined;
+  const taskSnapshots: Record<string, unknown>[] = [];
+
+  if (actor) {
+    const projSnap = await getDoc(projectRef);
+    if (projSnap.exists()) {
+      const d = projSnap.data();
+      projectBefore = { id: projectId, ...d };
+      projectName = d.name as string;
+    }
+  }
+
   const tasksSnap = await getDocsFromServer(tasksQuery);
   const taskRefs = tasksSnap.docs.map((d) => d.ref);
+
+  if (actor) {
+    for (const taskDoc of tasksSnap.docs) {
+      taskSnapshots.push({ id: taskDoc.id, ...taskDoc.data() });
+    }
+  }
 
   for (let i = 0; i < taskRefs.length; i += FIRESTORE_BATCH_LIMIT) {
     const batch = writeBatch(db);
@@ -244,11 +297,39 @@ export async function deleteProjectAndTasks(projectId: string) {
   }
 
   await deleteDoc(projectRef);
+
+  if (actor) {
+    await logChange({
+      userId: actor.userId,
+      userEmail: actor.userEmail,
+      action: "delete_project",
+      entityType: "project",
+      entityId: projectId,
+      projectName,
+      description: `Deleted project "${projectName ?? projectId}" and ${taskSnapshots.length} task(s)`,
+      before: { project: projectBefore, tasks: taskSnapshots },
+      after: null,
+    });
+  }
 }
 
-export async function updateProject(projectId: string, input: ProjectInput) {
+export async function updateProject(
+  projectId: string,
+  input: ProjectInput,
+  actor?: { userId: string; userEmail: string },
+) {
   const db = getFirestoreDb();
   const projectRef = doc(db, "projects", projectId);
+
+  let beforeData: Record<string, unknown> | null = null;
+  if (actor) {
+    const snap = await getDoc(projectRef);
+    if (snap.exists()) {
+      const d = snap.data();
+      beforeData = { name: d.name, address: d.address, contractStart: d.contractStart, contractEnd: d.contractEnd };
+    }
+  }
+
   const patch: Partial<ProjectInput> = {
     name: input.name,
     address: input.address,
@@ -257,4 +338,130 @@ export async function updateProject(projectId: string, input: ProjectInput) {
   if (input.contractEnd) patch.contractEnd = input.contractEnd;
 
   await updateDoc(projectRef, patch);
+
+  if (actor) {
+    await logChange({
+      userId: actor.userId,
+      userEmail: actor.userEmail,
+      action: "update_project",
+      entityType: "project",
+      entityId: projectId,
+      projectName: input.name,
+      description: `Updated project "${input.name}"`,
+      before: beforeData,
+      after: { ...input },
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Changelog: subscribe + revert
+// ---------------------------------------------------------------------------
+
+export function subscribeToChangelog(
+  callback: (entries: ChangelogEntry[]) => void,
+  maxEntries = 200,
+) {
+  const q = query(
+    changelogCollectionRef(),
+    orderBy("timestamp", "desc"),
+    firestoreLimit(maxEntries),
+  );
+  return onSnapshot(q, (snapshot) => {
+    const entries: ChangelogEntry[] = snapshot.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        timestamp: data.timestamp?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
+        userId: data.userId ?? "",
+        userEmail: data.userEmail ?? "",
+        action: data.action ?? "update_task",
+        entityType: data.entityType ?? "task",
+        entityId: data.entityId ?? "",
+        projectName: data.projectName,
+        description: data.description ?? "",
+        before: data.before ?? null,
+        after: data.after ?? null,
+      };
+    });
+    callback(entries);
+  });
+}
+
+export async function revertChange(entry: ChangelogEntry, actor: { userId: string; userEmail: string }) {
+  const db = getFirestoreDb();
+
+  switch (entry.action) {
+    case "create_project": {
+      if (!entry.entityId) throw new Error("Missing project ID to revert");
+      await deleteProjectAndTasks(entry.entityId);
+      break;
+    }
+    case "create_task": {
+      if (!entry.entityId) throw new Error("Missing task ID to revert");
+      await deleteDoc(doc(db, "tasks", entry.entityId));
+      break;
+    }
+    case "update_project": {
+      if (!entry.before || !entry.entityId) throw new Error("Missing data to revert");
+      const ref = doc(db, "projects", entry.entityId);
+      await updateDoc(ref, entry.before);
+      break;
+    }
+    case "update_task": {
+      if (!entry.before || !entry.entityId) throw new Error("Missing data to revert");
+      const ref = doc(db, "tasks", entry.entityId);
+      await updateDoc(ref, { ...entry.before, updatedAt: serverTimestamp() });
+      break;
+    }
+    case "delete_project": {
+      if (!entry.before) throw new Error("No snapshot to restore");
+      const snapshot = entry.before as { project: Record<string, unknown> | null; tasks: Record<string, unknown>[] };
+      if (snapshot.project) {
+        const { id: _id, createdAt, ...projData } = snapshot.project;
+        void _id;
+        void createdAt;
+        const projRef = doc(db, "projects", entry.entityId);
+        const batch = writeBatch(db);
+        batch.set(projRef, { ...projData, createdAt: serverTimestamp() });
+        if (snapshot.tasks?.length) {
+          for (const task of snapshot.tasks) {
+            const { id: taskId, updatedAt, ...taskData } = task as Record<string, unknown>;
+            void updatedAt;
+            const tRef = taskId ? doc(db, "tasks", taskId as string) : doc(tasksCollectionRef());
+            batch.set(tRef, { ...taskData, updatedAt: serverTimestamp() });
+          }
+        }
+        await batch.commit();
+      }
+      break;
+    }
+    case "delete_tasks": {
+      if (!entry.before) throw new Error("No snapshot to restore");
+      const tasksArr = entry.before as unknown as Record<string, unknown>[];
+      const batch = writeBatch(db);
+      for (const task of tasksArr) {
+        const { id: taskId, updatedAt, ...taskData } = task;
+        void updatedAt;
+        const ref = taskId ? doc(db, "tasks", taskId as string) : doc(tasksCollectionRef());
+        batch.set(ref, { ...taskData, updatedAt: serverTimestamp() });
+      }
+      await batch.commit();
+      break;
+    }
+    default:
+      throw new Error(`Cannot revert action: ${entry.action}`);
+  }
+
+  await logChange({
+    userId: actor.userId,
+    userEmail: actor.userEmail,
+    action: entry.action,
+    entityType: entry.entityType,
+    entityId: entry.entityId,
+    projectName: entry.projectName,
+    description: `Reverted: ${entry.description}`,
+    before: entry.after,
+    after: entry.before,
+  });
 }

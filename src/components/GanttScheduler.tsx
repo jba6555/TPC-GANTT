@@ -530,19 +530,23 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                         >
                           <div
                             onPointerDown={(e) => handlePointerDown(e, task, "resizeStart")}
-                            className="h-full w-2 cursor-ew-resize rounded-l"
+                            className="h-full w-2 shrink-0 cursor-ew-resize rounded-l"
                             style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
                           />
                           <div
                             onPointerDown={(e) => handlePointerDown(e, task, "move")}
-                            className="h-full flex-1 overflow-hidden px-2 leading-8"
-                            style={{ textAlign: "right", fontSize: 13 }}
+                            className="relative h-full min-w-0 flex-1 cursor-grab overflow-visible"
                           >
-                            {task.title}
+                            <span
+                              className="sticky left-0 inline-block whitespace-nowrap px-2 leading-8"
+                              style={{ fontSize: 13 }}
+                            >
+                              {task.title}
+                            </span>
                           </div>
                           <div
                             onPointerDown={(e) => handlePointerDown(e, task, "resizeEnd")}
-                            className="h-full w-2 cursor-ew-resize rounded-r"
+                            className="h-full w-2 shrink-0 cursor-ew-resize rounded-r"
                             style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
                           />
                         </div>
