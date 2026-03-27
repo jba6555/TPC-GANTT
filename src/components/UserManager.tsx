@@ -54,8 +54,16 @@ export default function UserManager({ emails, onSave, currentUserEmail }: UserMa
   async function handleSave() {
     setError(null);
     setSuccess(null);
+    let toSave = draft;
+    if (toSave.length > 0 && currentUserEmail) {
+      const selfNorm = normalizeEmail(currentUserEmail);
+      if (selfNorm && !toSave.includes(selfNorm)) {
+        toSave = [...toSave, selfNorm].sort((a, b) => a.localeCompare(b));
+        setDraft(toSave);
+      }
+    }
     setSaving(true);
-    const savePromise = onSave(draft);
+    const savePromise = onSave(toSave);
     try {
       const result = await Promise.race([
         savePromise.then(() => "saved" as const),
@@ -90,7 +98,8 @@ export default function UserManager({ emails, onSave, currentUserEmail }: UserMa
         Each entry must match the <strong className="font-medium text-zinc-800">Google account email</strong> someone
         uses to sign in. While this list is <strong className="font-medium text-zinc-800">empty</strong>, any Google
         account can use the app. After you add one or more emails, <strong className="font-medium text-zinc-800">only</strong>{" "}
-        those accounts can load projects and the timeline.
+        those accounts can load projects and the timeline. Saving a non-empty list automatically includes your
+        current sign-in email so you do not lock yourself out.
       </p>
 
       <div className="space-y-2">
