@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import type { BulkImportCsvRow } from "@/types/scheduler";
+import type { BulkImportCsvRow, TaskType } from "@/types/scheduler";
+
+function parseTaskTypeCell(raw: string | undefined): TaskType | undefined {
+  if (!raw?.trim()) return undefined;
+  const t = raw.trim().toLowerCase();
+  if (t === "milestone" || t === "m") return "milestone";
+  if (t === "task" || t === "t") return "task";
+  throw new Error(`Invalid task_type "${raw.trim()}". Use milestone or task.`);
+}
 
 interface CsvBulkUploadProps {
   onBulkUpload: (rows: BulkImportCsvRow[]) => Promise<{ createdProjects: number; createdTasks: number }>;
@@ -54,9 +62,11 @@ function parseCsvRows(csvText: string) {
   const contractStartIdx = getIndex("contract_start", "start_contract");
   const contractEndIdx = getIndex("contract_end", "end_contract");
   const taskTitleIdx = getIndex("task_title", "task", "title");
+  const taskTypeIdx = getIndex("task_type", "type");
   const taskStartIdx = getIndex("task_start", "task_start_date", "start_date");
   const taskDueIdx = getIndex("task_due", "task_due_date", "due_date");
   const notesIdx = getIndex("task_notes", "notes");
+  const assignedIdx = getIndex("assigned_to", "assigned");
 
   if (projectNameIdx < 0) {
     throw new Error("CSV is missing required column: project_name");
@@ -71,10 +81,15 @@ function parseCsvRows(csvText: string) {
     }
 
     const taskTitle = taskTitleIdx >= 0 ? cells[taskTitleIdx]?.trim() || undefined : undefined;
+    const taskType =
+      taskTypeIdx >= 0 ? parseTaskTypeCell(cells[taskTypeIdx]) : undefined;
     const taskStartDate = taskStartIdx >= 0 ? cells[taskStartIdx]?.trim() || undefined : undefined;
     const taskDueDate = taskDueIdx >= 0 ? cells[taskDueIdx]?.trim() || undefined : undefined;
     if (taskTitle && !taskStartDate && !taskDueDate) {
-      throw new Error(`Row ${i + 1}: task row needs task_start or task_due date.`);
+      throw new Error(`Row ${i + 1}: task row needs task_start and/or task_due date.`);
+    }
+    if (taskStartDate && taskDueDate && taskStartDate > taskDueDate) {
+      throw new Error(`Row ${i + 1}: task_start must be on or before task_due.`);
     }
 
     rows.push({
@@ -83,9 +98,11 @@ function parseCsvRows(csvText: string) {
       contractStart: contractStartIdx >= 0 ? cells[contractStartIdx]?.trim() || undefined : undefined,
       contractEnd: contractEndIdx >= 0 ? cells[contractEndIdx]?.trim() || undefined : undefined,
       taskTitle,
+      taskType,
       taskStartDate,
       taskDueDate,
       taskNotes: notesIdx >= 0 ? cells[notesIdx]?.trim() || undefined : undefined,
+      assignedTo: assignedIdx >= 0 ? cells[assignedIdx]?.trim() || undefined : undefined,
     });
   }
   return rows;
@@ -131,10 +148,12 @@ export default function CsvBulkUpload({ onBulkUpload }: CsvBulkUploadProps) {
                   Bulk Upload CSV
                 </h3>
                 <p className="text-sm text-zinc-600">
-                  Required column: project_name
+                  Required column: project_name (one row per project or per task line).
                 </p>
                 <p className="text-xs text-zinc-500">
-                  Optional: address, contract_start, contract_end, task_title, task_start, task_due, task_notes
+                  Project: address, contract_start, contract_end. Task (when task_title is set): task_type
+                  (milestone or task; defaults to task), task_start, task_due (milestones can use task_due
+                  only), task_notes, assigned_to (matches Assign labels in the app).
                 </p>
               </div>
               <button

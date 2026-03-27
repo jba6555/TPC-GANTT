@@ -72,9 +72,12 @@ export interface BulkImportCsvRow {
   contractStart?: string;
   contractEnd?: string;
   taskTitle?: string;
+  /** milestone | task; omitted rows default to task in bulk import for backward compatibility. */
+  taskType?: TaskType;
   taskStartDate?: string;
   taskDueDate?: string;
   taskNotes?: string;
+  assignedTo?: AssignedTo;
 }
 
 export type ChangeAction =

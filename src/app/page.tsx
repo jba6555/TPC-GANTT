@@ -28,7 +28,16 @@ import {
   updateTask,
   updateTaskDates,
 } from "@/lib/db";
-import type { AssignedOption, BulkImportCsvRow, ChangelogEntry, Project, ProjectInput, ProjectTask, AssignedTo } from "@/types/scheduler";
+import type {
+  AssignedOption,
+  BulkImportCsvRow,
+  ChangelogEntry,
+  Project,
+  ProjectInput,
+  ProjectTask,
+  AssignedTo,
+  TaskType,
+} from "@/types/scheduler";
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 export default function Home() {
@@ -457,20 +466,34 @@ export default function Home() {
       }
 
       if (!row.taskTitle?.trim()) continue;
-      const startDate = row.taskStartDate || row.taskDueDate;
-      const dueDate = row.taskDueDate || row.taskStartDate;
-      if (!startDate || !dueDate) continue;
 
+      const rawStart = row.taskStartDate?.trim();
+      const rawDue = row.taskDueDate?.trim();
+      if (!rawDue && !rawStart) continue;
+
+      const taskType: TaskType = row.taskType ?? "task";
+      const dueDate = rawDue || rawStart!;
+      let startDate: string | undefined;
+      if (rawStart && rawDue) {
+        if (rawStart < rawDue) {
+          startDate = rawStart;
+        } else if (rawStart === rawDue) {
+          startDate = taskType === "task" ? rawStart : undefined;
+        }
+      }
+
+      const assignedTo: AssignedTo | undefined = row.assignedTo?.trim() || undefined;
       const sortOrder = taskCountByProjectId.get(projectId) ?? 0;
       const projectName = row.projectName.trim();
       const taskId = await createTask(
         projectId,
         {
           title: row.taskTitle.trim(),
-          type: "task",
+          type: taskType,
           startDate,
           dueDate,
           notes: row.taskNotes?.trim() || undefined,
+          assignedTo,
         },
         sortOrder,
         { ...actor, projectName },
@@ -480,10 +503,11 @@ export default function Home() {
         projectName,
         task: {
           title: row.taskTitle.trim(),
-          type: "task",
+          type: taskType,
           startDate,
           dueDate,
           notes: row.taskNotes?.trim() || undefined,
+          assignedTo,
         },
       });
       taskCountByProjectId.set(projectId, sortOrder + 1);
