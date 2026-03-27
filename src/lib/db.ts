@@ -5,9 +5,7 @@ import {
   deleteDoc,
   getDoc,
   getDocsFromServer,
-  limit as firestoreLimit,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -493,31 +491,39 @@ export async function saveAllowedUsers(emails: string[]) {
 export function subscribeToChangelog(
   callback: (entries: ChangelogEntry[]) => void,
   maxEntries = 200,
+  onError?: (error: Error) => void,
 ) {
-  const q = query(
-    changelogCollectionRef(),
-    orderBy("timestamp", "desc"),
-    firestoreLimit(maxEntries),
+  // Full collection + client sort avoids composite index requirements (same pattern as projects).
+  const changelogCollection = changelogCollectionRef();
+  return onSnapshot(
+    changelogCollection,
+    (snapshot) => {
+      const rows = snapshot.docs.map((d) => {
+        const data = d.data();
+        const ms = data.timestamp?.toDate?.()?.getTime?.() ?? 0;
+        const entry: ChangelogEntry = {
+          id: d.id,
+          timestamp: data.timestamp?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
+          userId: data.userId ?? "",
+          userEmail: data.userEmail ?? "",
+          action: data.action ?? "update_task",
+          entityType: data.entityType ?? "task",
+          entityId: data.entityId ?? "",
+          projectName: data.projectName,
+          description: data.description ?? "",
+          before: data.before ?? null,
+          after: data.after ?? null,
+        };
+        return { ms, entry };
+      });
+      rows.sort((a, b) => b.ms - a.ms);
+      callback(rows.slice(0, maxEntries).map((r) => r.entry));
+    },
+    (error) => {
+      console.error("[Firestore] changelog listener:", error);
+      onError?.(error);
+    },
   );
-  return onSnapshot(q, (snapshot) => {
-    const entries: ChangelogEntry[] = snapshot.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        timestamp: data.timestamp?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
-        userId: data.userId ?? "",
-        userEmail: data.userEmail ?? "",
-        action: data.action ?? "update_task",
-        entityType: data.entityType ?? "task",
-        entityId: data.entityId ?? "",
-        projectName: data.projectName,
-        description: data.description ?? "",
-        before: data.before ?? null,
-        after: data.after ?? null,
-      };
-    });
-    callback(entries);
-  });
 }
 
 export async function revertChange(entry: ChangelogEntry, actor: { userId: string; userEmail: string }) {

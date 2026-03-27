@@ -59,6 +59,9 @@ export function getFirestoreDb(): Firestore {
         tabManager: persistentMultipleTabManager(),
       }),
       experimentalAutoDetectLongPolling: true,
+      // Changelog and task payloads often include optional fields; without this,
+      // Firestore rejects writes that contain undefined (history would never persist).
+      ignoreUndefinedProperties: true,
     });
   } catch {
     firestoreSingleton = getFirestore(app);
