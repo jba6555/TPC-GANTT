@@ -410,37 +410,60 @@ async function loadTasksSnapshotForDelete(projectId: string) {
 }
 
 /**
- * Deletes a project and its tasks. Reads tasks from local cache first (fast); batched
- * deletes keep many tasks to one round-trip per 500 ops.
+ * Deletes a project and its tasks.
+ *
+ * When `prefetched` is passed (normal UI delete), skips all Firestore reads — the client
+ * already has project + tasks from listeners, so we only run batched deletes (fast).
+ *
+ * When omitted (e.g. history revert), loads task refs via queries.
  */
 export async function deleteProjectAndTasks(
   projectId: string,
   actor?: { userId: string; userEmail: string },
+  prefetched?: { project: Project; tasks: ProjectTask[] },
 ) {
   const db = getFirestoreDb();
   const projectRef = doc(db, "projects", projectId);
 
   let projectBefore: Record<string, unknown> | null = null;
   let projectName: string | undefined;
-  const taskSnapshots: Record<string, unknown>[] = [];
+  let taskSnapshots: Record<string, unknown>[] = [];
+  let taskRefs: ReturnType<typeof doc>[];
 
-  let tasksSnap;
-  if (actor) {
+  if (prefetched) {
+    if (prefetched.project.id !== projectId) {
+      throw new Error("prefetched project id does not match projectId");
+    }
+    taskRefs = prefetched.tasks.map((t) => doc(db, "tasks", t.id));
+    if (actor) {
+      const { project, tasks } = prefetched;
+      projectBefore = {
+        id: project.id,
+        name: project.name,
+        address: project.address,
+        contractStart: project.contractStart,
+        contractEnd: project.contractEnd,
+        createdBy: project.createdBy,
+        createdAt: project.createdAt,
+      };
+      projectName = project.name;
+      taskSnapshots = tasks.map((t) => ({ ...t }));
+    }
+  } else if (actor) {
     const [projSnap, taskSnap] = await Promise.all([getDoc(projectRef), loadTasksSnapshotForDelete(projectId)]);
     if (projSnap.exists()) {
       const d = projSnap.data();
       projectBefore = { id: projectId, ...d };
       projectName = d.name as string;
     }
-    tasksSnap = taskSnap;
-    for (const taskDoc of tasksSnap.docs) {
+    for (const taskDoc of taskSnap.docs) {
       taskSnapshots.push({ id: taskDoc.id, ...taskDoc.data() });
     }
+    taskRefs = taskSnap.docs.map((d) => d.ref);
   } else {
-    tasksSnap = await loadTasksSnapshotForDelete(projectId);
+    const tasksSnap = await loadTasksSnapshotForDelete(projectId);
+    taskRefs = tasksSnap.docs.map((d) => d.ref);
   }
-
-  const taskRefs = tasksSnap.docs.map((d) => d.ref);
 
   // Delete tasks and project in the same batch sequence so a typical project (≤500 ops)
   // commits in one round-trip. Previously, task batches committed first and a separate

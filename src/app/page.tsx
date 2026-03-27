@@ -197,7 +197,10 @@ export default function Home() {
   }
 
   async function handleDeleteProject(projectId: string) {
-    await deleteProjectAndTasks(projectId, actor);
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
+    const tasks = allTasks.filter((t) => t.projectId === projectId);
+    await deleteProjectAndTasks(projectId, actor, { project, tasks });
     // Apply locally so the row disappears even if the projects snapshot briefly replays a stale cache.
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     setAllTasks((prev) => prev.filter((t) => t.projectId !== projectId));
