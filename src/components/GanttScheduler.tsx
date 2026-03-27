@@ -389,12 +389,14 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                       className="flex w-full cursor-pointer items-center overflow-hidden border-b border-zinc-100 bg-white px-2 transition-colors hover:bg-zinc-50"
                       style={{ height: TASK_ROW_H }}
                     >
-                      <span className="shrink-0 pr-2 text-[10px] text-zinc-400">
-                        {start.isSame(due, "day")
-                          ? start.format("MM/DD/YY")
-                          : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`}
-                      </span>
-                      <span className="truncate text-[13px] font-medium text-zinc-900">{task.title}</span>
+                      <div className="ml-auto min-w-0 text-right">
+                        <p className="truncate text-[13px] font-medium text-zinc-900">{task.title}</p>
+                        <p className="text-[10px] text-zinc-400">
+                          {start.isSame(due, "day")
+                            ? start.format("MM/DD/YY")
+                            : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`}
+                        </p>
+                      </div>
                     </button>
                   );
                 })}
