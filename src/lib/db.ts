@@ -17,6 +17,7 @@ import {
 import { getFirestoreDb } from "@/lib/firebase";
 import type { AssignedOption, ChangeAction, ChangelogEntry, Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
+import { mergeBuiltinAllowedEmails } from "@/lib/allowedUsers";
 
 function projectsCollectionRef() {
   return collection(getFirestoreDb(), "projects");
@@ -542,11 +543,11 @@ export function subscribeToAllowedUsers(
           const emails = raw
             .map((e) => (typeof e === "string" ? normalizeAllowedEmail(e) : ""))
             .filter(Boolean);
-          callback([...new Set(emails)].sort((a, b) => a.localeCompare(b)));
+          callback(mergeBuiltinAllowedEmails([...new Set(emails)]));
           return;
         }
       }
-      callback([]);
+      callback(mergeBuiltinAllowedEmails([]));
     },
     (error) => {
       console.error("[Firestore] allowedUsers listener:", error);
@@ -558,9 +559,7 @@ export function subscribeToAllowedUsers(
 export async function saveAllowedUsers(emails: string[]) {
   const db = getFirestoreDb();
   const docRef = doc(db, "settings", "allowedUsers");
-  const normalized = [...new Set(emails.map(normalizeAllowedEmail).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b),
-  );
+  const normalized = mergeBuiltinAllowedEmails(emails.map(normalizeAllowedEmail).filter(Boolean));
   await setDoc(docRef, { emails: normalized }, { merge: false });
 }
 

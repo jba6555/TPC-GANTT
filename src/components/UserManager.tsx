@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isUserAllowlistEnforced } from "@/lib/allowedUsers";
+import { isBuiltinAllowedUserEmail, isUserAllowlistEnforced } from "@/lib/allowedUsers";
 
 interface UserManagerProps {
   emails: string[];
@@ -47,6 +47,8 @@ export default function UserManager({ emails, onSave, currentUserEmail }: UserMa
   }
 
   function removeAt(index: number) {
+    const email = draft[index];
+    if (email && isBuiltinAllowedUserEmail(email)) return;
     setDraft((prev) => prev.filter((_, i) => i !== index));
     setError(null);
     setSuccess(null);
@@ -121,6 +123,7 @@ export default function UserManager({ emails, onSave, currentUserEmail }: UserMa
         ) : (
           draft.map((email, i) => {
             const isSelf = currentNorm && email === currentNorm;
+            const isBuiltin = isBuiltinAllowedUserEmail(email);
             return (
               <div
                 key={email}
@@ -131,17 +134,26 @@ export default function UserManager({ emails, onSave, currentUserEmail }: UserMa
                   {isSelf ? (
                     <span className="ml-2 text-xs font-normal text-zinc-500">(you)</span>
                   ) : null}
+                  {isBuiltin ? (
+                    <span className="ml-2 text-xs font-normal text-zinc-500">(built-in)</span>
+                  ) : null}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => removeAt(i)}
-                  className="shrink-0 rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600"
-                  title="Remove"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
-                    <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
-                  </svg>
-                </button>
+                {isBuiltin ? (
+                  <span className="shrink-0 text-[10px] text-zinc-400" title="Required account">
+                    —
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => removeAt(i)}
+                    className="shrink-0 rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                    title="Remove"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
+                      <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
+                    </svg>
+                  </button>
+                )}
               </div>
             );
           })
