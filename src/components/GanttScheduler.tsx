@@ -353,7 +353,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onU
     return map;
   }, [tasks]);
 
-  const LABEL_WIDTH = 280;
+  const LABEL_WIDTH = 200;
   const HEADER_ROW_H = 24;
   const PROJECT_ROW_H = 44;
   const TASK_ROW_H = 48;
