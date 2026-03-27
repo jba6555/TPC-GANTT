@@ -394,9 +394,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const HEADER_ROW_H = Math.round(28 * ROW_SCALE);
   const PROJECT_ROW_H = Math.round(44 * ROW_SCALE);
   const TASK_ROW_H = Math.round(48 * ROW_SCALE);
-  /** Bar height as a fraction of row — keeps bars visibly thinner than the row; min 8px for readability. */
-  const TASK_BAR_H = Math.max(8, Math.min(Math.round(TASK_ROW_H * 0.34), TASK_ROW_H - 6));
-  const barLabelFontPx = Math.min(10, Math.max(8, TASK_BAR_H - 2));
+  /** Bar height ~52% of row, capped so at least 4px gap top/bottom; never taller than the row. */
+  const TASK_BAR_H = Math.max(8, Math.min(Math.round(TASK_ROW_H * 0.52), TASK_ROW_H - 4));
+  const barLabelFontPx = Math.min(11, Math.max(9, Math.round(TASK_BAR_H * 0.72)));
   const timelineWidth = columns.reduce((sum, c) => sum + c.widthPx, 0);
   const MIN_BAR_WIDTH = 6;
   const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
@@ -639,7 +639,6 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           const dateRangeText = start.isSame(due, "day")
                             ? start.format("MM/DD/YY")
                             : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`;
-                          const rangeFits = barWidth >= 67;
                           return (
                             <>
                               <div
@@ -668,16 +667,15 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                 />
                                 <div
                                   onPointerDown={(e) => handlePointerDown(e, task, "move")}
-                                  className="relative h-full min-w-0 flex-1 cursor-grab overflow-visible"
+                                  className="relative h-full min-w-0 flex-1 cursor-grab overflow-hidden"
                                 >
-                                  {rangeFits && (
-                                    <span
-                                      className="sticky left-0 inline-block whitespace-nowrap px-1.5"
-                                      style={{ fontSize: barLabelFontPx, lineHeight: `${TASK_BAR_H}px` }}
-                                    >
-                                      {dateRangeText}
-                                    </span>
-                                  )}
+                                  <span
+                                    className="block truncate px-1.5 text-left"
+                                    title={dateRangeText}
+                                    style={{ fontSize: barLabelFontPx, lineHeight: `${TASK_BAR_H}px` }}
+                                  >
+                                    {dateRangeText}
+                                  </span>
                                 </div>
                                 <div
                                   onPointerDown={(e) => handlePointerDown(e, task, "resizeEnd")}
@@ -685,20 +683,6 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                   style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
                                 />
                               </div>
-                              {!rangeFits && (
-                                <span
-                                  className="pointer-events-none absolute whitespace-nowrap text-zinc-700"
-                                  style={{
-                                    left: left + barWidth + 4,
-                                    top: "50%",
-                                    transform: "translateY(-50%)",
-                                    fontSize: barLabelFontPx,
-                                    lineHeight: `${TASK_BAR_H}px`,
-                                  }}
-                                >
-                                  {dateRangeText}
-                                </span>
-                              )}
                             </>
                           );
                         })()}
