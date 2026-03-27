@@ -362,9 +362,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         <div className="shrink-0 border-r border-zinc-200" style={{ width: LABEL_WIDTH }}>
           <div className="flex items-center border-b border-zinc-200 bg-zinc-100 px-2 text-[11px]" style={{ height: HEADER_ROW_H }}>&nbsp;</div>
           <div className="flex items-center border-b border-zinc-200 bg-zinc-50 px-2 text-[11px]" style={{ height: HEADER_ROW_H }}>&nbsp;</div>
-          <div className="flex items-center border-b border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-600" style={{ height: HEADER_ROW_H }}>
-            Task
-          </div>
+          <div className="border-b border-zinc-200 bg-white" style={{ height: HEADER_ROW_H }} />
           {projects.map((project) => {
             const projectTasks = tasksByProject.get(project.id) ?? [];
             return (
