@@ -14,7 +14,13 @@ interface GanttSchedulerProps {
     taskId: string,
     fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
   ) => Promise<void>;
-  onAddTask?: (projectId: string, input: { title: string; startDate?: string; dueDate?: string }) => Promise<void>;
+  onAddTask?: (projectId: string, input: {
+    title: string;
+    startDate?: string;
+    dueDate?: string;
+    notes?: string;
+    assignedTo?: string;
+  }) => Promise<void>;
 }
 
 type DragMode = "move" | "resizeStart" | "resizeEnd";
@@ -71,6 +77,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
   const [taskTitle, setTaskTitle] = useState("");
   const [taskStartDate, setTaskStartDate] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskNotes, setTaskNotes] = useState("");
+  const [taskAssignedTo, setTaskAssignedTo] = useState<AssignedTo>("");
   const [taskSaving, setTaskSaving] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
   const hasScrolledToToday = useRef(false);
@@ -448,6 +456,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
                           setTaskTitle("");
                           setTaskStartDate("");
                           setTaskDueDate("");
+                          setTaskNotes("");
+                          setTaskAssignedTo("");
                         }}
                         className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
                         title="Add task"
@@ -657,6 +667,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
             if (e.target === e.currentTarget) {
               setTaskModalProjectId(null);
               setTaskError(null);
+              setTaskNotes("");
+              setTaskAssignedTo("");
             }
           }}
         >
@@ -673,6 +685,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
                 onClick={() => {
                   setTaskModalProjectId(null);
                   setTaskError(null);
+                  setTaskNotes("");
+                  setTaskAssignedTo("");
                 }}
                 className="rounded px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
               >
@@ -690,12 +704,16 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
                   title: taskTitle.trim(),
                   startDate: taskStartDate || undefined,
                   dueDate: taskDueDate || undefined,
+                  notes: taskNotes.trim() || undefined,
+                  assignedTo: taskAssignedTo || undefined,
                 })
                   .then(() => {
                     setTaskModalProjectId(null);
                     setTaskTitle("");
                     setTaskStartDate("");
                     setTaskDueDate("");
+                    setTaskNotes("");
+                    setTaskAssignedTo("");
                     setTaskError(null);
                   })
                   .catch((err: unknown) => {
@@ -741,6 +759,41 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
                 </div>
               </div>
 
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700">Assigned To</label>
+                <select
+                  value={taskAssignedTo}
+                  onChange={(e) => setTaskAssignedTo(e.target.value as AssignedTo)}
+                  className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
+                >
+                  {options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label || "(none)"}
+                    </option>
+                  ))}
+                </select>
+                {taskAssignedTo && (
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <div
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: options.find((o) => o.value === taskAssignedTo)?.color }}
+                    />
+                    <span className="text-xs text-zinc-500">Bar color preview</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700">Notes</label>
+                <textarea
+                  value={taskNotes}
+                  onChange={(e) => setTaskNotes(e.target.value)}
+                  placeholder="Optional notes"
+                  className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  rows={3}
+                />
+              </div>
+
               {taskError && <p className="text-xs text-red-600">{taskError}</p>}
 
               <div className="flex gap-2">
@@ -757,6 +810,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
                   onClick={() => {
                     setTaskModalProjectId(null);
                     setTaskError(null);
+                    setTaskNotes("");
+                    setTaskAssignedTo("");
                   }}
                   className="rounded bg-zinc-100 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-60"
                 >
