@@ -389,8 +389,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
 
   /** Fixed label column: keeps project controls aligned with timeline rows. */
   const LABEL_WIDTH = 220;
-  /** Row heights scaled ~30% shorter than original (0.7×). */
-  const ROW_SCALE = 0.7;
+  /** Cumulative ~49% of base (two −30% steps: 0.7 × 0.7). */
+  const ROW_SCALE = 0.7 * 0.7;
   const HEADER_ROW_H = Math.round(28 * ROW_SCALE);
   const PROJECT_ROW_H = Math.round(44 * ROW_SCALE);
   const TASK_ROW_H = Math.round(48 * ROW_SCALE);
@@ -480,7 +480,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           setTaskNotes("");
                           setTaskAssignedTo("");
                         }}
-                        className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
+                        className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
                         title="Add task"
                       >
                         +
@@ -502,7 +502,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           );
                         });
                       }}
-                      className="flex h-6 w-6 items-center justify-center rounded text-sm font-medium text-zinc-500 transition-colors hover:bg-red-100 hover:text-red-700"
+                      className="flex h-5 w-5 items-center justify-center rounded text-sm font-medium text-zinc-500 transition-colors hover:bg-red-100 hover:text-red-700"
                       title="Delete project"
                     >
                       -
@@ -510,7 +510,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                     <button
                       type="button"
                       onClick={() => toggleProjectCollapse(project.id)}
-                      className="flex h-6 w-6 items-center justify-center rounded text-xs text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
+                      className="flex h-5 w-5 items-center justify-center rounded text-xs text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
                       title={isCollapsed ? "Show tasks" : "Hide tasks"}
                     >
                       {isCollapsed ? "\u25B6" : "\u25BC"}
@@ -529,7 +529,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         style={{ height: TASK_ROW_H }}
                       >
                         <div className="min-w-0 w-full text-right">
-                          <p className="truncate text-[11px] font-medium leading-tight text-zinc-900">{task.title}</p>
+                          <p className="truncate text-[10px] font-medium leading-tight text-zinc-900">{task.title}</p>
                         </div>
                       </button>
                     );
@@ -638,7 +638,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           const dateRangeText = start.isSame(due, "day")
                             ? start.format("MM/DD/YY")
                             : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`;
-                          const rangeFits = barWidth >= 96;
+                          const rangeFits = barWidth >= 67;
                           return (
                             <>
                               <div
@@ -670,8 +670,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                 >
                                   {rangeFits && (
                                     <span
-                                      className="sticky left-0 inline-block whitespace-nowrap px-2"
-                                      style={{ fontSize: 11, lineHeight: `${TASK_BAR_H}px` }}
+                                      className="sticky left-0 inline-block whitespace-nowrap px-1.5"
+                                      style={{ fontSize: 10, lineHeight: `${TASK_BAR_H}px` }}
                                     >
                                       {dateRangeText}
                                     </span>
@@ -689,7 +689,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                   style={{
                                     left: left + barWidth + 4,
                                     top: taskBarTop,
-                                    fontSize: 11,
+                                    fontSize: 10,
                                     lineHeight: `${TASK_BAR_H}px`,
                                   }}
                                 >
