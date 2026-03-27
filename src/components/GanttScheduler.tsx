@@ -10,11 +10,13 @@ interface GanttSchedulerProps {
   tasks: ProjectTask[];
   assignedOptions?: AssignedOption[];
   onAddProject: (input: ProjectInput) => Promise<void>;
+  onDeleteProject: (projectId: string) => Promise<void>;
   onUpdateTaskDates: (taskId: string, startDate?: string, dueDate?: string) => Promise<void>;
   onUpdateTask: (
     taskId: string,
     fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
   ) => Promise<void>;
+  onDeleteTask?: (taskId: string) => Promise<void>;
   onAddTask?: (projectId: string, input: {
     title: string;
     startDate?: string;
@@ -56,7 +58,7 @@ interface SpanHeader {
 
 const ZOOM_KEYS: ZoomLevel[] = ZOOM_LEVELS.map((z) => z.key);
 
-export default function GanttScheduler({ projects, tasks, assignedOptions, onAddProject, onUpdateTaskDates, onUpdateTask, onAddTask }: GanttSchedulerProps) {
+export default function GanttScheduler({ projects, tasks, assignedOptions, onAddProject, onDeleteProject, onUpdateTaskDates, onUpdateTask, onDeleteTask, onAddTask }: GanttSchedulerProps) {
   const options = assignedOptions ?? ASSIGNED_OPTIONS;
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -460,11 +462,6 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 <div className="flex items-center overflow-hidden border-b border-zinc-200 bg-zinc-50 px-2" style={{ height: PROJECT_ROW_H }}>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-zinc-900">{project.name}</p>
-                    {project.address ? (
-                      <p className="truncate text-xs text-zinc-500">{project.address}</p>
-                    ) : (
-                      <p className="truncate text-xs text-zinc-400">No address</p>
-                    )}
                   </div>
                   <div className="ml-1 flex shrink-0 items-center gap-0.5">
                     {onAddTask && (
@@ -486,6 +483,27 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         +
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ok = window.confirm(
+                          `Delete project "${project.name}" and all of its tasks? This cannot be undone.`,
+                        );
+                        if (!ok) return;
+                        void onDeleteProject(project.id).catch((err: unknown) => {
+                          console.error(err);
+                          window.alert(
+                            err && typeof err === "object" && "message" in err
+                              ? String((err as { message?: string }).message)
+                              : "Could not delete project.",
+                          );
+                        });
+                      }}
+                      className="flex h-6 w-6 items-center justify-center rounded text-sm font-medium text-zinc-500 transition-colors hover:bg-red-100 hover:text-red-700"
+                      title="Delete project"
+                    >
+                      -
+                    </button>
                     <button
                       type="button"
                       onClick={() => toggleProjectCollapse(project.id)}
@@ -1091,6 +1109,37 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
               className="mt-2 w-full rounded-lg bg-zinc-900 py-2 text-sm font-medium text-white hover:bg-zinc-800"
             >
               Close
+            </button>
+            <button
+              type="button"
+              disabled={editSaving}
+              onClick={() => {
+                if (!notesTask) return;
+                if (!onDeleteTask) {
+                  setEditError("Delete is not available right now.");
+                  return;
+                }
+                const confirmed = window.confirm("Are you sure you want to delete this task?");
+                if (!confirmed) return;
+                setEditError(null);
+                setEditSaving(true);
+                void onDeleteTask(notesTask.id)
+                  .then(() => {
+                    setNotesTask(null);
+                  })
+                  .catch((err: unknown) => {
+                    const message =
+                      err && typeof err === "object" && "message" in err
+                        ? String((err as { message?: string }).message)
+                        : "";
+                    setEditError(message || "Could not delete task.");
+                    console.error(err);
+                  })
+                  .finally(() => setEditSaving(false));
+              }}
+              className="mt-2 w-full rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+            >
+              {editSaving ? "Working..." : "Delete Task"}
             </button>
           </div>
         </div>

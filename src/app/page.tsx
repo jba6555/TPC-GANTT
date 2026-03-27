@@ -13,6 +13,8 @@ import { isEmailAllowlisted } from "@/lib/allowedUsers";
 import {
   createProject,
   createTask,
+  deleteProjectAndTasks,
+  deleteTask,
   revertChange,
   saveAllowedUsers,
   saveAssignedOptions,
@@ -158,6 +160,10 @@ export default function Home() {
     await createProject(userId, input, userEmail);
   }
 
+  async function handleDeleteProject(projectId: string) {
+    await deleteProjectAndTasks(projectId, actor);
+  }
+
   async function handleAddTaskForProject(
     projectId: string,
     input: {
@@ -190,6 +196,10 @@ export default function Home() {
     fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
   ) {
     await updateTask(taskId, fields, actor);
+  }
+
+  async function handleDeleteTask(taskId: string) {
+    await deleteTask(taskId, actor);
   }
 
   async function handleRevertChange(entry: ChangelogEntry) {
@@ -407,8 +417,10 @@ export default function Home() {
             tasks={allTasks}
             assignedOptions={assignedOptions}
             onAddProject={handleAddProject}
+            onDeleteProject={handleDeleteProject}
             onUpdateTaskDates={handleUpdateTaskDates}
             onUpdateTask={handleUpdateTask}
+            onDeleteTask={handleDeleteTask}
             onAddTask={handleAddTaskForProject}
           />
       </section>
