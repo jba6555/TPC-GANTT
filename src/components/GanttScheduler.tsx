@@ -462,11 +462,19 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
             return (
               <div key={project.id}>
                 <div
-                  className="flex items-center overflow-hidden border-b border-zinc-200 bg-zinc-50 px-2"
+                  className="flex items-center gap-1 overflow-hidden border-b border-zinc-200 bg-zinc-50 px-2"
                   style={{ height: PROJECT_ROW_H }}
                 >
+                  <button
+                    type="button"
+                    onClick={() => toggleProjectCollapse(project.id)}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-sm leading-none text-[#d4a017] transition-colors hover:bg-zinc-200/80 hover:text-[#b8860b]"
+                    title={isCollapsed ? "Show tasks" : "Hide tasks"}
+                  >
+                    {isCollapsed ? "\u25B6" : "\u25BC"}
+                  </button>
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900">{project.name}</span>
-                  <div className="ml-1 flex shrink-0 items-center gap-0.5">
+                  <div className="ml-0.5 flex shrink-0 items-center gap-1">
                     {onAddTask && (
                       <button
                         type="button"
@@ -480,7 +488,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           setTaskNotes("");
                           setTaskAssignedTo("");
                         }}
-                        className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
+                        className="flex h-5 w-5 items-center justify-center rounded-full bg-green-600 text-xs font-bold leading-none text-white shadow-sm transition-colors hover:bg-green-700"
                         title="Add task"
                       >
                         +
@@ -502,18 +510,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           );
                         });
                       }}
-                      className="flex h-5 w-5 items-center justify-center rounded text-sm font-medium text-zinc-500 transition-colors hover:bg-red-100 hover:text-red-700"
+                      className="flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-sm font-bold leading-none text-white shadow-sm transition-colors hover:bg-red-700"
                       title="Delete project"
                     >
                       -
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleProjectCollapse(project.id)}
-                      className="flex h-5 w-5 items-center justify-center rounded text-xs text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
-                      title={isCollapsed ? "Show tasks" : "Hide tasks"}
-                    >
-                      {isCollapsed ? "\u25B6" : "\u25BC"}
                     </button>
                   </div>
                 </div>
