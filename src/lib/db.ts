@@ -395,10 +395,23 @@ export async function deleteTask(
 
 const FIRESTORE_BATCH_LIMIT = 500;
 
+/** Cache-first task query; server read only when cache is empty (cold cache), matching changelog pattern. */
+async function loadTasksSnapshotForDelete(projectId: string) {
+  const tasksQuery = query(tasksCollectionRef(), where("projectId", "==", projectId));
+  let snap = await getDocs(tasksQuery);
+  if (snap.metadata.fromCache && snap.docs.length === 0) {
+    try {
+      snap = await getDocsFromServer(tasksQuery);
+    } catch (e) {
+      console.warn("[deleteProject] server task read failed, using cache:", e);
+    }
+  }
+  return snap;
+}
+
 /**
- * Deletes a project and its tasks. Uses a server read so the query does not hang on
- * local cache, and batched writes so many task deletes are one round-trip each
- * instead of N parallel deleteDoc calls.
+ * Deletes a project and its tasks. Reads tasks from local cache first (fast); batched
+ * deletes keep many tasks to one round-trip per 500 ops.
  */
 export async function deleteProjectAndTasks(
   projectId: string,
@@ -406,44 +419,28 @@ export async function deleteProjectAndTasks(
 ) {
   const db = getFirestoreDb();
   const projectRef = doc(db, "projects", projectId);
-  const tasksQuery = query(tasksCollectionRef(), where("projectId", "==", projectId));
 
   let projectBefore: Record<string, unknown> | null = null;
   let projectName: string | undefined;
   const taskSnapshots: Record<string, unknown>[] = [];
 
+  let tasksSnap;
   if (actor) {
-    const projSnap = await getDoc(projectRef);
+    const [projSnap, taskSnap] = await Promise.all([getDoc(projectRef), loadTasksSnapshotForDelete(projectId)]);
     if (projSnap.exists()) {
       const d = projSnap.data();
       projectBefore = { id: projectId, ...d };
       projectName = d.name as string;
     }
-  }
-
-  const TASK_QUERY_TIMEOUT_MS = 25_000;
-  let tasksSnap;
-  try {
-    tasksSnap = await Promise.race([
-      getDocsFromServer(tasksQuery),
-      new Promise<never>((_, reject) => {
-        setTimeout(
-          () => reject(new Error("Timed out loading tasks for this project. Check your connection and try again.")),
-          TASK_QUERY_TIMEOUT_MS,
-        );
-      }),
-    ]);
-  } catch (e) {
-    console.warn("[deleteProject] server task query failed or timed out; using local query:", e);
-    tasksSnap = await getDocs(tasksQuery);
-  }
-  const taskRefs = tasksSnap.docs.map((d) => d.ref);
-
-  if (actor) {
+    tasksSnap = taskSnap;
     for (const taskDoc of tasksSnap.docs) {
       taskSnapshots.push({ id: taskDoc.id, ...taskDoc.data() });
     }
+  } else {
+    tasksSnap = await loadTasksSnapshotForDelete(projectId);
   }
+
+  const taskRefs = tasksSnap.docs.map((d) => d.ref);
 
   // Delete tasks and project in the same batch sequence so a typical project (≤500 ops)
   // commits in one round-trip. Previously, task batches committed first and a separate
@@ -458,8 +455,9 @@ export async function deleteProjectAndTasks(
     await batch.commit();
   }
 
+  // Do not await: history log is a second network round-trip; delete is already committed.
   if (actor) {
-    await logChange({
+    void logChange({
       userId: actor.userId,
       userEmail: actor.userEmail,
       action: "delete_project",
