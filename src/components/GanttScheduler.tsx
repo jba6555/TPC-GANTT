@@ -312,6 +312,9 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   }, [tasks]);
 
   const LABEL_WIDTH = 280;
+  const HEADER_ROW_H = 24;
+  const PROJECT_ROW_H = 44;
+  const TASK_ROW_H = 48;
   const timelineWidth = columns.reduce((sum, c) => sum + c.widthPx, 0);
   const MIN_BAR_WIDTH = 6;
   const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
@@ -357,22 +360,24 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
       <div className="flex">
         {/* Fixed label column */}
         <div className="shrink-0 border-r border-zinc-200" style={{ width: LABEL_WIDTH }}>
-          <div className="border-b border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px]">&nbsp;</div>
-          <div className="border-b border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px]">&nbsp;</div>
-          <div className="border-b border-zinc-200 bg-white px-2 py-1 text-xs font-semibold text-zinc-600">
+          <div className="flex items-center border-b border-zinc-200 bg-zinc-100 px-2 text-[11px]" style={{ height: HEADER_ROW_H }}>&nbsp;</div>
+          <div className="flex items-center border-b border-zinc-200 bg-zinc-50 px-2 text-[11px]" style={{ height: HEADER_ROW_H }}>&nbsp;</div>
+          <div className="flex items-center border-b border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-600" style={{ height: HEADER_ROW_H }}>
             Task
           </div>
           {projects.map((project) => {
             const projectTasks = tasksByProject.get(project.id) ?? [];
             return (
               <div key={project.id}>
-                <div className="border-b border-zinc-200 bg-zinc-50 p-2">
-                  <p className="text-base font-semibold text-zinc-900">{project.name}</p>
-                  {project.address ? (
-                    <p className="text-xs text-zinc-500">{project.address}</p>
-                  ) : (
-                    <p className="text-xs text-zinc-400">No address</p>
-                  )}
+                <div className="flex items-center overflow-hidden border-b border-zinc-200 bg-zinc-50 px-2" style={{ height: PROJECT_ROW_H }}>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-zinc-900">{project.name}</p>
+                    {project.address ? (
+                      <p className="truncate text-xs text-zinc-500">{project.address}</p>
+                    ) : (
+                      <p className="truncate text-xs text-zinc-400">No address</p>
+                    )}
+                  </div>
                 </div>
                 {projectTasks.map((task) => {
                   const start = dayjs(task.startDate || task.dueDate);
@@ -383,13 +388,15 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                       type="button"
                       title="View notes"
                       onClick={() => setNotesTask(task)}
-                      className="block w-full cursor-pointer border-b border-zinc-100 bg-white p-2 text-right transition-colors hover:bg-zinc-50"
-                      style={{ fontSize: 13, height: 48 }}
+                      className="flex w-full cursor-pointer items-center justify-end overflow-hidden border-b border-zinc-100 bg-white px-2 text-right transition-colors hover:bg-zinc-50"
+                      style={{ fontSize: 13, height: TASK_ROW_H }}
                     >
-                      <p className="font-medium text-zinc-900">{task.title}</p>
-                      <p className="text-xs text-zinc-500">
-                        {start.format("MMM D")} - {due.format("MMM D, YYYY")}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-zinc-900">{task.title}</p>
+                        <p className="truncate text-xs text-zinc-500">
+                          {start.format("MMM D")} - {due.format("MMM D, YYYY")}
+                        </p>
+                      </div>
                     </button>
                   );
                 })}
@@ -407,12 +414,12 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                 <>
                   <div
                     className="grid border-b border-zinc-200 bg-zinc-100"
-                    style={{ gridTemplateColumns: gridTemplate }}
+                    style={{ gridTemplateColumns: gridTemplate, height: HEADER_ROW_H }}
                   >
                     {yearHeaders.map((y) => (
                       <div
                         key={y.key}
-                        className="relative overflow-visible border-r border-zinc-300 py-1"
+                        className="relative flex items-center overflow-visible border-r border-zinc-300"
                         style={{ gridColumn: `span ${y.span}` }}
                       >
                         <div className="sticky left-0 w-fit px-2 text-[11px] font-semibold text-zinc-700">
@@ -423,12 +430,12 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                   </div>
                   <div
                     className="grid border-b border-zinc-200 bg-zinc-50"
-                    style={{ gridTemplateColumns: gridTemplate }}
+                    style={{ gridTemplateColumns: gridTemplate, height: HEADER_ROW_H }}
                   >
                     {monthHeaders.map((m) => (
                       <div
                         key={m.key}
-                        className="relative overflow-visible border-r border-zinc-200 py-1"
+                        className="relative flex items-center overflow-visible border-r border-zinc-200"
                         style={{ gridColumn: `span ${m.span}` }}
                       >
                         <div className="sticky left-0 w-fit px-2 text-[10px] font-medium text-zinc-600">
@@ -439,12 +446,12 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                   </div>
                   <div
                     className="grid border-b border-zinc-200"
-                    style={{ gridTemplateColumns: gridTemplate }}
+                    style={{ gridTemplateColumns: gridTemplate, height: HEADER_ROW_H }}
                   >
                     {columns.map((col) => (
                       <div
                         key={col.key}
-                        className="overflow-hidden border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
+                        className="flex items-center justify-center overflow-hidden border-r border-zinc-100 text-[10px] text-zinc-500"
                         style={{ minWidth: 0 }}
                       >
                         {col.widthPx >= 14 ? col.label : ""}
@@ -465,9 +472,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
               const projectTasks = tasksByProject.get(project.id) ?? [];
               return (
                 <div key={project.id}>
-                  <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: 40 }}>
-                    <div className="p-2">&nbsp;</div>
-                  </div>
+                  <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: PROJECT_ROW_H }} />
                   {projectTasks.map((task) => {
                     const start = dayjs(task.startDate || task.dueDate);
                     const due = dayjs(task.dueDate);
@@ -482,7 +487,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                         key={task.id}
                         className="relative border-b border-zinc-100"
                         style={{
-                          height: 48,
+                          height: TASK_ROW_H,
                           ...(gridLinePx
                             ? {
                                 backgroundImage: "linear-gradient(to right, #f4f4f5 1px, transparent 1px)",
