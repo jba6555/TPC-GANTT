@@ -394,7 +394,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const HEADER_ROW_H = Math.round(28 * ROW_SCALE);
   const PROJECT_ROW_H = Math.round(44 * ROW_SCALE);
   const TASK_ROW_H = Math.round(48 * ROW_SCALE);
-  const TASK_BAR_H = Math.round(32 * ROW_SCALE);
+  /** Gap above/below the bar inside the task row (row height stays the same; bar is inset). */
+  const TASK_BAR_V_INSET = Math.max(4, Math.round(TASK_ROW_H * 0.18));
+  const TASK_BAR_H = Math.max(10, TASK_ROW_H - 2 * TASK_BAR_V_INSET);
   const taskBarTop = Math.max(0, Math.floor((TASK_ROW_H - TASK_BAR_H) / 2));
   const timelineWidth = columns.reduce((sum, c) => sum + c.widthPx, 0);
   const MIN_BAR_WIDTH = 6;
