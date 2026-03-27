@@ -220,7 +220,8 @@ export async function createProject(userId: string, input: ProjectInput, userEma
     createdBy: userId,
     createdAt: serverTimestamp(),
   });
-  await logChange({
+  // Do not await: changelog is a second round-trip; UI should close as soon as the project exists.
+  void logChange({
     userId,
     userEmail,
     action: "create_project",
@@ -248,7 +249,7 @@ export async function createTask(
     updatedAt: serverTimestamp(),
   });
   if (actor) {
-    await logChange({
+    void logChange({
       userId: actor.userId,
       userEmail: actor.userEmail,
       action: "create_task",
