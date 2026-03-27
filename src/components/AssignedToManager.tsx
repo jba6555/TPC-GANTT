@@ -14,7 +14,7 @@ export default function AssignedToManager({ options, onSave }: AssignedToManager
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const [newLabel, setNewLabel] = useState("");
   const [newColor, setNewColor] = useState("#3b82f6");
@@ -29,13 +29,13 @@ export default function AssignedToManager({ options, onSave }: AssignedToManager
       }
       return next;
     });
-    setSuccess(false);
+    setSuccess(null);
   }
 
   function removeOption(index: number) {
     if (index === 0) return;
     setDraft((prev) => prev.filter((_, i) => i !== index));
-    setSuccess(false);
+    setSuccess(null);
   }
 
   function addOption() {
@@ -53,7 +53,7 @@ export default function AssignedToManager({ options, onSave }: AssignedToManager
     setNewColor("#3b82f6");
     setNewTextColor("#ffffff");
     setError(null);
-    setSuccess(false);
+    setSuccess(null);
   }
 
   function moveOption(index: number, direction: -1 | 1) {
@@ -65,16 +65,34 @@ export default function AssignedToManager({ options, onSave }: AssignedToManager
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
-    setSuccess(false);
+    setSuccess(null);
   }
 
   async function handleSave() {
     setError(null);
-    setSuccess(false);
+    setSuccess(null);
     setSaving(true);
+    const savePromise = onSave(draft);
     try {
-      await onSave(draft);
-      setSuccess(true);
+      const result = await Promise.race([
+        savePromise.then(() => "saved" as const),
+        new Promise<"timeout">((resolve) => {
+          window.setTimeout(() => resolve("timeout"), 2500);
+        }),
+      ]);
+
+      if (result === "saved") {
+        setSuccess("Saved successfully.");
+      } else {
+        // Firestore can take a long time to ack writes on poor connections.
+        // Stop blocking the UI and continue syncing in the background.
+        setSuccess("Saved locally. Syncing to Firestore in the background...");
+        void savePromise.catch((e: unknown) => {
+          const msg = e instanceof Error ? e.message : "Could not sync options to Firestore.";
+          setError(msg);
+          setSuccess(null);
+        });
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Could not save options.";
       setError(msg);
@@ -229,7 +247,7 @@ export default function AssignedToManager({ options, onSave }: AssignedToManager
       </div>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {success && <p className="text-xs text-green-600">Saved successfully.</p>}
+      {success && <p className="text-xs text-green-600">{success}</p>}
 
       <button
         type="button"
