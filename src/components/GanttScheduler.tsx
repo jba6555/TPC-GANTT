@@ -67,10 +67,12 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
   const dragOccurredRef = useRef(false);
   const [zoom, setZoom] = useState<ZoomLevel>("week");
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
-  const [addingTaskProjectId, setAddingTaskProjectId] = useState<string | null>(null);
-  const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [addingTaskSaving, setAddingTaskSaving] = useState(false);
-  const newTaskInputRef = useRef<HTMLInputElement | null>(null);
+  const [taskModalProjectId, setTaskModalProjectId] = useState<string | null>(null);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskStartDate, setTaskStartDate] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskSaving, setTaskSaving] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
   const hasScrolledToToday = useRef(false);
   const scrollFractionRef = useRef<number | null>(null);
   const scrollToTodayRef = useRef(false);
@@ -440,12 +442,12 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
                       <button
                         type="button"
                         onClick={() => {
-                          setAddingTaskProjectId(project.id);
-                          setNewTaskTitle("");
-                          if (collapsedProjects.has(project.id)) {
-                            toggleProjectCollapse(project.id);
-                          }
-                          setTimeout(() => newTaskInputRef.current?.focus(), 50);
+                          setTaskModalProjectId(project.id);
+                          setTaskError(null);
+                          setTaskSaving(false);
+                          setTaskTitle("");
+                          setTaskStartDate("");
+                          setTaskDueDate("");
                         }}
                         className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
                         title="Add task"
@@ -463,54 +465,6 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
                     </button>
                   </div>
                 </div>
-                {addingTaskProjectId === project.id && (
-                  <form
-                    className="flex items-center gap-1 border-b border-zinc-200 bg-blue-50 px-2 py-1.5"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (!newTaskTitle.trim() || !onAddTask) return;
-                      setAddingTaskSaving(true);
-                      const today = dayjs().format("YYYY-MM-DD");
-                      onAddTask(project.id, { title: newTaskTitle.trim(), startDate: today, dueDate: today })
-                        .then(() => {
-                          setAddingTaskProjectId(null);
-                          setNewTaskTitle("");
-                        })
-                        .catch((err) => console.error(err))
-                        .finally(() => setAddingTaskSaving(false));
-                    }}
-                  >
-                    <input
-                      ref={newTaskInputRef}
-                      type="text"
-                      value={newTaskTitle}
-                      onChange={(e) => setNewTaskTitle(e.target.value)}
-                      placeholder="Task title..."
-                      className="min-w-0 flex-1 rounded border border-zinc-300 px-2 py-1 text-xs focus:border-blue-400 focus:outline-none"
-                      disabled={addingTaskSaving}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") {
-                          setAddingTaskProjectId(null);
-                          setNewTaskTitle("");
-                        }
-                      }}
-                    />
-                    <button
-                      type="submit"
-                      disabled={addingTaskSaving || !newTaskTitle.trim()}
-                      className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {addingTaskSaving ? "..." : "Add"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAddingTaskProjectId(null); setNewTaskTitle(""); }}
-                      className="rounded px-1.5 py-1 text-xs text-zinc-500 hover:bg-zinc-200"
-                    >
-                      ✕
-                    </button>
-                  </form>
-                )}
                 {!isCollapsed && projectTasks.map((task) => {
                   const start = dayjs(task.startDate || task.dueDate);
                   const due = dayjs(task.dueDate);
@@ -609,9 +563,6 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
               return (
                 <div key={project.id}>
                   <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: PROJECT_ROW_H }} />
-                  {addingTaskProjectId === project.id && (
-                    <div className="border-b border-zinc-200 bg-blue-50" style={{ height: 36 }} />
-                  )}
                   {!isCollapsed && projectTasks.map((task) => {
                     const start = dayjs(task.startDate || task.dueDate);
                     const due = dayjs(task.dueDate);
@@ -696,6 +647,126 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
           </div>
         </div>
       </div>
+
+      {taskModalProjectId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setTaskModalProjectId(null);
+              setTaskError(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-zinc-900">Add Task</h3>
+                <p className="text-sm text-zinc-600">
+                  {projects.find((p) => p.id === taskModalProjectId)?.name ?? "Project"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTaskModalProjectId(null);
+                  setTaskError(null);
+                }}
+                className="rounded px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!taskTitle.trim() || !onAddTask) return;
+                setTaskError(null);
+                setTaskSaving(true);
+                void onAddTask(taskModalProjectId, {
+                  title: taskTitle.trim(),
+                  startDate: taskStartDate || undefined,
+                  dueDate: taskDueDate || undefined,
+                })
+                  .then(() => {
+                    setTaskModalProjectId(null);
+                    setTaskTitle("");
+                    setTaskStartDate("");
+                    setTaskDueDate("");
+                    setTaskError(null);
+                  })
+                  .catch((err: unknown) => {
+                    const message =
+                      err && typeof err === "object" && "message" in err
+                        ? String((err as { message?: string }).message)
+                        : "";
+                    setTaskError(message || "Could not add task.");
+                    console.error(err);
+                  })
+                  .finally(() => setTaskSaving(false));
+              }}
+              className="space-y-3"
+            >
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700">Task Title</label>
+                <input
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  required
+                  className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-zinc-700">Start Date</label>
+                  <input
+                    type="date"
+                    value={taskStartDate}
+                    onChange={(e) => setTaskStartDate(e.target.value)}
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-zinc-700">Complete Date</label>
+                  <input
+                    type="date"
+                    value={taskDueDate}
+                    onChange={(e) => setTaskDueDate(e.target.value)}
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+              </div>
+
+              {taskError && <p className="text-xs text-red-600">{taskError}</p>}
+
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={taskSaving}
+                  className="flex-1 rounded bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {taskSaving ? "Adding..." : "Add Task"}
+                </button>
+                <button
+                  type="button"
+                  disabled={taskSaving}
+                  onClick={() => {
+                    setTaskModalProjectId(null);
+                    setTaskError(null);
+                  }}
+                  className="rounded bg-zinc-100 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {notesTask && (
         <div
