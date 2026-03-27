@@ -15,11 +15,12 @@ type DragMode = "move" | "resizeStart" | "resizeEnd";
 
 const DRAG_THRESHOLD_PX = 8;
 
-type ZoomLevel = "week" | "month" | "year";
+type ZoomLevel = "week" | "month" | "6month" | "year";
 
 const ZOOM_LEVELS: { key: ZoomLevel; label: string; pxPerDay: number }[] = [
   { key: "week", label: "Week", pxPerDay: 100 },
   { key: "month", label: "Month", pxPerDay: 28 },
+  { key: "6month", label: "6 Months", pxPerDay: 4.5 },
   { key: "year", label: "Year", pxPerDay: 2 },
 ];
 
@@ -141,6 +142,10 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         cs = minDate.subtract(1, "month").startOf("month");
         ce = maxDate.add(1, "month").endOf("month");
         break;
+      case "6month":
+        cs = minDate.subtract(1, "month").startOf("month");
+        ce = maxDate.add(1, "month").endOf("month");
+        break;
       case "year":
         cs = minDate.subtract(1, "month").startOf("month");
         ce = maxDate.add(1, "month").endOf("month");
@@ -168,9 +173,10 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         const weekEnd = d.add(6, "day");
         const eff = weekEnd.isAfter(ce) ? ce : weekEnd;
         const n = eff.diff(d, "day") + 1;
+        const weekLabel = zoom === "6month" ? d.format("D") : "";
         cols.push({
           key: d.format("YYYY-[W]ww"),
-          label: "",
+          label: weekLabel,
           widthPx: n * ppd,
           monthKey: d.format("YYYY-MM"),
           monthLabel: d.format("MMM"),
@@ -202,7 +208,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
       }
     }
 
-    const glp = zoom === "week" ? ppd : zoom === "month" ? ppd : 7 * ppd;
+    const glp = zoom === "week" || zoom === "month" ? ppd : 7 * ppd;
 
     return { chartStart: cs, chartEnd: ce, pxPerDay: ppd, columns: cols, yearHeaders: years, monthHeaders: months, gridLinePx: glp };
   }, [tasks, projects, zoom]);
@@ -336,7 +342,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-3">
       <div className="mb-2 flex items-center justify-end gap-2">
         <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
-          {(["week", "month", "year"] as ZoomLevel[]).map((level) => {
+          {(["week", "month", "6month", "year"] as ZoomLevel[]).map((level) => {
             const label = ZOOM_LEVELS.find((z) => z.key === level)!.label;
             return (
               <button

@@ -6,16 +6,19 @@ import { useRouter } from "next/navigation";
 import ProjectList from "@/components/ProjectList";
 import GanttScheduler from "@/components/GanttScheduler";
 import { logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
+import HistoryLog from "@/components/HistoryLog";
 import {
   createProject,
   createTask,
   deleteProjectAndTasks,
+  revertChange,
   subscribeToProjects,
   subscribeToAllTasks,
+  subscribeToChangelog,
   updateProject,
   updateTaskDates,
 } from "@/lib/db";
-import type { BulkImportCsvRow, Project, ProjectInput, ProjectTask } from "@/types/scheduler";
+import type { BulkImportCsvRow, ChangelogEntry, Project, ProjectInput, ProjectTask } from "@/types/scheduler";
 
 export default function Home() {
   const APP_VERSION = "frozen-col-v7";
@@ -26,6 +29,8 @@ export default function Home() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [allTasks, setAllTasks] = useState<ProjectTask[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
   const [appTitle, setAppTitle] = useState(DEFAULT_TITLE);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -94,13 +99,21 @@ export default function Home() {
     return () => unsubscribe();
   }, [authReady, userId]);
 
+  useEffect(() => {
+    if (!authReady || !userId) return;
+    const unsubscribe = subscribeToChangelog(setChangelog);
+    return () => unsubscribe();
+  }, [authReady, userId]);
+
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId),
     [projects, selectedProjectId],
   );
 
+  const actor = useMemo(() => ({ userId, userEmail }), [userId, userEmail]);
+
   async function handleAddProject(input: ProjectInput) {
-    await createProject(userId, input);
+    await createProject(userId, input, userEmail);
   }
 
   async function handleAddTaskForProject(
@@ -115,6 +128,7 @@ export default function Home() {
   ) {
     const date = input.startDate || input.dueDate || dayjs().format("YYYY-MM-DD");
     const sortOrder = allTasks.filter((t) => t.projectId === projectId).length;
+    const projectName = projects.find((p) => p.id === projectId)?.name;
     await createTask(projectId, {
       title: input.title,
       type: "task",
@@ -122,18 +136,26 @@ export default function Home() {
       dueDate: input.dueDate || date,
       notes: input.notes,
       assignedTo: (input.assignedTo as import("@/types/scheduler").AssignedTo) || undefined,
-    }, sortOrder);
+    }, sortOrder, { ...actor, projectName });
   }
 
   async function handleDeleteProject(projectId: string) {
-    await deleteProjectAndTasks(projectId);
+    await deleteProjectAndTasks(projectId, actor);
   }
 
   async function handleUpdateProject(
     projectId: string,
     input: ProjectInput,
   ) {
-    await updateProject(projectId, input);
+    await updateProject(projectId, input, actor);
+  }
+
+  async function handleUpdateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
+    await updateTaskDates(taskId, startDate, dueDate, actor);
+  }
+
+  async function handleRevertChange(entry: ChangelogEntry) {
+    await revertChange(entry, actor);
   }
 
   async function handleSignOut() {
@@ -166,7 +188,7 @@ export default function Home() {
           address: row.address?.trim() ?? "",
           contractStart: row.contractStart || undefined,
           contractEnd: row.contractEnd || undefined,
-        });
+        }, userEmail);
         projectIdByKey.set(key, projectId);
         taskCountByProjectId.set(projectId, 0);
         createdProjects += 1;
@@ -188,6 +210,7 @@ export default function Home() {
           notes: row.taskNotes?.trim() || undefined,
         },
         sortOrder,
+        { ...actor, projectName: row.projectName.trim() },
       );
       taskCountByProjectId.set(projectId, sortOrder + 1);
       createdTasks += 1;
@@ -198,49 +221,17 @@ export default function Home() {
 
   async function handleSeedSample() {
     if (!userId) return;
+    const seedActor = { ...actor, projectName: "3217 Rowena Ave" };
     const projectId = await createProject(userId, {
       name: "3217 Rowena Ave",
       address: "3217 Rowena Ave",
       contractStart: "2026-03-13",
       contractEnd: "2027-01-01",
-    });
-    await createTask(
-      projectId,
-      {
-        title: "Pre-Application due",
-        type: "milestone",
-        dueDate: "2026-05-01",
-      },
-      0,
-    );
-    await createTask(
-      projectId,
-      {
-        title: "Full Application due",
-        type: "milestone",
-        dueDate: "2026-05-15",
-      },
-      1,
-    );
-    await createTask(
-      projectId,
-      {
-        title: "Under Contract",
-        type: "task",
-        startDate: "2026-03-13",
-        dueDate: "2027-01-01",
-      },
-      2,
-    );
-    await createTask(
-      projectId,
-      {
-        title: "Meeting with NCHFA",
-        type: "milestone",
-        dueDate: "2026-06-01",
-      },
-      3,
-    );
+    }, userEmail);
+    await createTask(projectId, { title: "Pre-Application due", type: "milestone", dueDate: "2026-05-01" }, 0, seedActor);
+    await createTask(projectId, { title: "Full Application due", type: "milestone", dueDate: "2026-05-15" }, 1, seedActor);
+    await createTask(projectId, { title: "Under Contract", type: "task", startDate: "2026-03-13", dueDate: "2027-01-01" }, 2, seedActor);
+    await createTask(projectId, { title: "Meeting with NCHFA", type: "milestone", dueDate: "2026-06-01" }, 3, seedActor);
     setSelectedProjectId(projectId);
   }
 
@@ -301,13 +292,29 @@ export default function Home() {
           <p className="text-sm text-zinc-600">{userEmail}</p>
           <p className="text-xs text-zinc-400">Version: {APP_VERSION}</p>
         </div>
-        <button
-          type="button"
-          onClick={handleSignOut}
-          className="rounded bg-zinc-800 px-3 py-1 text-sm text-white"
-        >
-          Sign Out
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setHistoryOpen((prev) => !prev)}
+            className={`flex items-center gap-1.5 rounded px-3 py-1 text-sm font-medium transition-colors ${
+              historyOpen
+                ? "bg-blue-600 text-white"
+                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            History
+          </button>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="rounded bg-zinc-800 px-3 py-1 text-sm text-white"
+          >
+            Sign Out
+          </button>
+        </div>
       </header>
 
       <div className={`grid gap-4 ${sidebarOpen ? "lg:grid-cols-[320px_1fr]" : "lg:grid-cols-[auto_1fr]"}`}>
@@ -332,7 +339,7 @@ export default function Home() {
               onDeleteProject={handleDeleteProject}
               onUpdateProject={handleUpdateProject}
               onAddTask={handleAddTaskForProject}
-              onUpdateTaskDates={updateTaskDates}
+              onUpdateTaskDates={handleUpdateTaskDates}
               onBulkUpload={handleBulkUpload}
             />
           </div>
@@ -374,11 +381,31 @@ export default function Home() {
             <GanttScheduler
               projects={projects}
               tasks={allTasks}
-              onUpdateTaskDates={updateTaskDates}
+              onUpdateTaskDates={handleUpdateTaskDates}
             />
           )}
         </section>
       </div>
+
+      {historyOpen && (
+        <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+            <h2 className="text-lg font-semibold text-zinc-900">History Log</h2>
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(false)}
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            <HistoryLog entries={changelog} onRevert={handleRevertChange} />
+          </div>
+        </div>
+      )}
     </main>
   );
 }
