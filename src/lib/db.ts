@@ -5,6 +5,7 @@ import {
   doc,
   deleteDoc,
   getDoc,
+  getDocs,
   getDocsFromServer,
   onSnapshot,
   query,
@@ -420,7 +421,22 @@ export async function deleteProjectAndTasks(
     }
   }
 
-  const tasksSnap = await getDocsFromServer(tasksQuery);
+  const TASK_QUERY_TIMEOUT_MS = 25_000;
+  let tasksSnap;
+  try {
+    tasksSnap = await Promise.race([
+      getDocsFromServer(tasksQuery),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("Timed out loading tasks for this project. Check your connection and try again.")),
+          TASK_QUERY_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } catch (e) {
+    console.warn("[deleteProject] server task query failed or timed out; using local query:", e);
+    tasksSnap = await getDocs(tasksQuery);
+  }
   const taskRefs = tasksSnap.docs.map((d) => d.ref);
 
   if (actor) {
