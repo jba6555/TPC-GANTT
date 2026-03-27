@@ -2,12 +2,13 @@
 
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AssignedTo, Project, ProjectTask } from "@/types/scheduler";
+import type { AssignedOption, AssignedTo, Project, ProjectTask } from "@/types/scheduler";
 import { ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 interface GanttSchedulerProps {
   projects: Project[];
   tasks: ProjectTask[];
+  assignedOptions?: AssignedOption[];
   onUpdateTaskDates: (taskId: string, startDate?: string, dueDate?: string) => Promise<void>;
   onUpdateTask: (
     taskId: string,
@@ -47,7 +48,8 @@ interface SpanHeader {
 
 const ZOOM_KEYS: ZoomLevel[] = ZOOM_LEVELS.map((z) => z.key);
 
-export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onUpdateTask }: GanttSchedulerProps) {
+export default function GanttScheduler({ projects, tasks, assignedOptions, onUpdateTaskDates, onUpdateTask }: GanttSchedulerProps) {
+  const options = assignedOptions ?? ASSIGNED_OPTIONS;
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [notesTask, setNotesTask] = useState<ProjectTask | null>(null);
@@ -63,6 +65,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onU
   /** True after pointer moved enough to count as a drag (move/resize). Used so click can open notes after a tap. */
   const dragOccurredRef = useRef(false);
   const [zoom, setZoom] = useState<ZoomLevel>("week");
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const hasScrolledToToday = useRef(false);
   const scrollFractionRef = useRef<number | null>(null);
   const scrollToTodayRef = useRef(false);
@@ -353,6 +356,15 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onU
     return map;
   }, [tasks]);
 
+  const toggleProjectCollapse = useCallback((projectId: string) => {
+    setCollapsedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  }, []);
+
   const LABEL_WIDTH = 200;
   const HEADER_ROW_H = 24;
   const PROJECT_ROW_H = 44;
@@ -406,9 +418,18 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onU
           <div className="border-b border-zinc-200 bg-white" style={{ height: HEADER_ROW_H }} />
           {projects.map((project) => {
             const projectTasks = tasksByProject.get(project.id) ?? [];
+            const isCollapsed = collapsedProjects.has(project.id);
             return (
               <div key={project.id}>
-                <div className="flex items-center overflow-hidden border-b border-zinc-200 bg-zinc-50 px-2" style={{ height: PROJECT_ROW_H }}>
+                <div className="flex items-center overflow-hidden border-b border-zinc-200 bg-zinc-50 px-1" style={{ height: PROJECT_ROW_H }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleProjectCollapse(project.id)}
+                    className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-sm text-zinc-600 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
+                    title={isCollapsed ? "Show tasks" : "Hide tasks"}
+                  >
+                    {isCollapsed ? "\u25B6" : "\u25BC"}
+                  </button>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-zinc-900">{project.name}</p>
                     {project.address ? (
@@ -418,7 +439,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onU
                     )}
                   </div>
                 </div>
-                {projectTasks.map((task) => {
+                {!isCollapsed && projectTasks.map((task) => {
                   const start = dayjs(task.startDate || task.dueDate);
                   const due = dayjs(task.dueDate);
                   return (
@@ -512,10 +533,11 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onU
 
             {projects.map((project) => {
               const projectTasks = tasksByProject.get(project.id) ?? [];
+              const isCollapsed = collapsedProjects.has(project.id);
               return (
                 <div key={project.id}>
                   <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: PROJECT_ROW_H }} />
-                  {projectTasks.map((task) => {
+                  {!isCollapsed && projectTasks.map((task) => {
                     const start = dayjs(task.startDate || task.dueDate);
                     const due = dayjs(task.dueDate);
                     const left = start.diff(chartStart, "day") * pxPerDay;
@@ -539,17 +561,16 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onU
                         }}
                       >
                         {(() => {
-                          const barColor = (() => {
-                            const opt = task.assignedTo ? ASSIGNED_OPTIONS.find((o) => o.value === task.assignedTo) : null;
-                            return opt?.color || "#3b82f6";
-                          })();
+                          const barOpt = task.assignedTo ? options.find((o) => o.value === task.assignedTo) : null;
+                          const barColor = barOpt?.color || "#3b82f6";
+                          const barTextColor = barOpt?.textColor || "#ffffff";
                           const labelFits = barWidth >= 60;
                           return (
                             <>
                               <div
                                 data-task-id={task.id}
-                                className={`absolute top-2 flex h-8 items-center rounded text-white ${pending === task.id ? "opacity-60" : ""}`}
-                                style={{ left, width: barWidth, cursor: "grab", backgroundColor: barColor }}
+                                className={`absolute top-2 flex h-8 items-center rounded ${pending === task.id ? "opacity-60" : ""}`}
+                                style={{ left, width: barWidth, cursor: "grab", backgroundColor: barColor, color: barTextColor }}
                                 onClick={() => {
                                   if (!dragOccurredRef.current) {
                                     openTaskEditor(task);
@@ -718,7 +739,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onU
                     onChange={(e) => setEditAssignedTo(e.target.value as AssignedTo)}
                     className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
                   >
-                    {ASSIGNED_OPTIONS.map((opt) => (
+                    {options.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label || "(none)"}
                       </option>

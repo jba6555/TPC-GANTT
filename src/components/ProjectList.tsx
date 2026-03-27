@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { BulkImportCsvRow, Project, ProjectTask, AssignedTo } from "@/types/scheduler";
+import type { AssignedOption, BulkImportCsvRow, Project, ProjectTask, AssignedTo } from "@/types/scheduler";
 import { ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 interface ProjectListProps {
   projects: Project[];
   tasks: ProjectTask[];
   selectedProjectId?: string;
+  assignedOptions?: AssignedOption[];
   onSelect: (projectId: string) => void;
   onAddProject: (input: {
     name: string;
@@ -41,6 +42,7 @@ export default function ProjectList({
   projects,
   tasks,
   selectedProjectId,
+  assignedOptions,
   onSelect,
   onAddProject,
   onDeleteProject,
@@ -50,6 +52,7 @@ export default function ProjectList({
   onUpdateTask,
   onBulkUpload,
 }: ProjectListProps) {
+  const options = assignedOptions ?? ASSIGNED_OPTIONS;
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -708,7 +711,7 @@ export default function ProjectList({
                   onChange={(e) => setTaskAssignedTo(e.target.value as AssignedTo)}
                   className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
                 >
-                  {ASSIGNED_OPTIONS.map((opt) => (
+                  {options.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label || "(none)"}
                     </option>
@@ -718,7 +721,7 @@ export default function ProjectList({
                   <div className="flex items-center gap-1.5 pt-0.5">
                     <div
                       className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: ASSIGNED_OPTIONS.find((o) => o.value === taskAssignedTo)?.color }}
+                      style={{ backgroundColor: options.find((o) => o.value === taskAssignedTo)?.color }}
                     />
                     <span className="text-xs text-zinc-500">Bar color preview</span>
                   </div>
@@ -882,7 +885,7 @@ export default function ProjectList({
                     onChange={(e) => setNotesEditAssignedTo(e.target.value as AssignedTo)}
                     className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
                   >
-                    {ASSIGNED_OPTIONS.map((opt) => (
+                    {options.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label || "(none)"}
                       </option>

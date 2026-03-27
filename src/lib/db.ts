@@ -10,12 +10,14 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
-import type { ChangeAction, ChangelogEntry, Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
+import type { AssignedOption, ChangeAction, ChangelogEntry, Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
+import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 function projectsCollectionRef() {
   return collection(getFirestoreDb(), "projects");
@@ -402,6 +404,39 @@ export async function updateProject(
       after: { ...input },
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Assigned-to options: stored in settings/assignedOptions
+// ---------------------------------------------------------------------------
+
+export function subscribeToAssignedOptions(
+  callback: (options: AssignedOption[]) => void,
+) {
+  const db = getFirestoreDb();
+  const docRef = doc(db, "settings", "assignedOptions");
+  return onSnapshot(docRef, (snap) => {
+    if (snap.exists()) {
+      const data = snap.data();
+      const raw = data.options as AssignedOption[] | undefined;
+      if (Array.isArray(raw) && raw.length > 0) {
+        callback(raw.map((o) => ({
+          value: o.value ?? "",
+          label: o.label ?? "",
+          color: o.color ?? "#3b82f6",
+          textColor: o.textColor ?? "#ffffff",
+        })));
+        return;
+      }
+    }
+    callback(DEFAULT_ASSIGNED_OPTIONS);
+  });
+}
+
+export async function saveAssignedOptions(options: AssignedOption[]) {
+  const db = getFirestoreDb();
+  const docRef = doc(db, "settings", "assignedOptions");
+  await setDoc(docRef, { options }, { merge: false });
 }
 
 // ---------------------------------------------------------------------------

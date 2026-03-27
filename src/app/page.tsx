@@ -7,19 +7,23 @@ import ProjectList from "@/components/ProjectList";
 import GanttScheduler from "@/components/GanttScheduler";
 import { logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
 import HistoryLog from "@/components/HistoryLog";
+import AssignedToManager from "@/components/AssignedToManager";
 import {
   createProject,
   createTask,
   deleteProjectAndTasks,
   revertChange,
+  saveAssignedOptions,
   subscribeToProjects,
   subscribeToAllTasks,
   subscribeToChangelog,
+  subscribeToAssignedOptions,
   updateProject,
   updateTask,
   updateTaskDates,
 } from "@/lib/db";
-import type { BulkImportCsvRow, ChangelogEntry, Project, ProjectInput, ProjectTask, AssignedTo } from "@/types/scheduler";
+import type { AssignedOption, BulkImportCsvRow, ChangelogEntry, Project, ProjectInput, ProjectTask, AssignedTo } from "@/types/scheduler";
+import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 export default function Home() {
   const APP_VERSION = "frozen-col-v7";
@@ -31,6 +35,8 @@ export default function Home() {
   const [allTasks, setAllTasks] = useState<ProjectTask[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [assignedToOpen, setAssignedToOpen] = useState(false);
+  const [assignedOptions, setAssignedOptions] = useState<AssignedOption[]>(DEFAULT_ASSIGNED_OPTIONS);
   const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
   const [appTitle, setAppTitle] = useState(DEFAULT_TITLE);
@@ -103,6 +109,12 @@ export default function Home() {
   useEffect(() => {
     if (!authReady || !userId) return;
     const unsubscribe = subscribeToChangelog(setChangelog);
+    return () => unsubscribe();
+  }, [authReady, userId]);
+
+  useEffect(() => {
+    if (!authReady || !userId) return;
+    const unsubscribe = subscribeToAssignedOptions(setAssignedOptions);
     return () => unsubscribe();
   }, [authReady, userId]);
 
@@ -317,6 +329,20 @@ export default function Home() {
           </button>
           <button
             type="button"
+            onClick={() => setAssignedToOpen((prev) => !prev)}
+            className={`flex items-center gap-1.5 rounded px-3 py-1 text-sm font-medium transition-colors ${
+              assignedToOpen
+                ? "bg-blue-600 text-white"
+                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+            </svg>
+            Assigned To
+          </button>
+          <button
+            type="button"
             onClick={handleSignOut}
             className="rounded bg-zinc-800 px-3 py-1 text-sm text-white"
           >
@@ -342,6 +368,7 @@ export default function Home() {
               projects={projects}
               tasks={allTasks}
               selectedProjectId={selectedProjectId}
+              assignedOptions={assignedOptions}
               onSelect={setSelectedProjectId}
               onAddProject={handleAddProject}
               onDeleteProject={handleDeleteProject}
@@ -390,6 +417,7 @@ export default function Home() {
             <GanttScheduler
               projects={projects}
               tasks={allTasks}
+              assignedOptions={assignedOptions}
               onUpdateTaskDates={handleUpdateTaskDates}
               onUpdateTask={handleUpdateTask}
             />
@@ -413,6 +441,29 @@ export default function Home() {
           </div>
           <div className="flex-1 overflow-y-auto p-3">
             <HistoryLog entries={changelog} onRevert={handleRevertChange} />
+          </div>
+        </div>
+      )}
+
+      {assignedToOpen && (
+        <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+            <h2 className="text-lg font-semibold text-zinc-900">Assigned To Options</h2>
+            <button
+              type="button"
+              onClick={() => setAssignedToOpen(false)}
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <AssignedToManager
+              options={assignedOptions}
+              onSave={saveAssignedOptions}
+            />
           </div>
         </div>
       )}

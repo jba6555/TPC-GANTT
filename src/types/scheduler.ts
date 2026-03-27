@@ -10,19 +10,29 @@ export interface Project {
   createdAt: string;
 }
 
-export type AssignedTo = "" | "Development" | "Design" | "Pre-Con" | "Construction" | "Bryan" | "Chris" | "Josh" | "Marc";
+export type AssignedTo = string;
 
-export const ASSIGNED_OPTIONS: { value: AssignedTo; label: string; color: string }[] = [
-  { value: "", label: "", color: "#3b82f6" },
-  { value: "Development", label: "Development", color: "#8b5cf6" },
-  { value: "Design", label: "Design", color: "#ec4899" },
-  { value: "Pre-Con", label: "Pre-Con", color: "#f59e0b" },
-  { value: "Construction", label: "Construction", color: "#ef4444" },
-  { value: "Bryan", label: "Bryan", color: "#10b981" },
-  { value: "Chris", label: "Chris", color: "#06b6d4" },
-  { value: "Josh", label: "Josh", color: "#6366f1" },
-  { value: "Marc", label: "Marc", color: "#f97316" },
+export interface AssignedOption {
+  value: string;
+  label: string;
+  color: string;
+  textColor: string;
+}
+
+export const DEFAULT_ASSIGNED_OPTIONS: AssignedOption[] = [
+  { value: "", label: "", color: "#3b82f6", textColor: "#ffffff" },
+  { value: "Development", label: "Development", color: "#8b5cf6", textColor: "#ffffff" },
+  { value: "Design", label: "Design", color: "#ec4899", textColor: "#ffffff" },
+  { value: "Pre-Con", label: "Pre-Con", color: "#f59e0b", textColor: "#ffffff" },
+  { value: "Construction", label: "Construction", color: "#ef4444", textColor: "#ffffff" },
+  { value: "Bryan", label: "Bryan", color: "#10b981", textColor: "#ffffff" },
+  { value: "Chris", label: "Chris", color: "#06b6d4", textColor: "#ffffff" },
+  { value: "Josh", label: "Josh", color: "#6366f1", textColor: "#ffffff" },
+  { value: "Marc", label: "Marc", color: "#f97316", textColor: "#ffffff" },
 ];
+
+/** @deprecated Use dynamic options from Firestore. Kept for backward compat. */
+export const ASSIGNED_OPTIONS = DEFAULT_ASSIGNED_OPTIONS;
 
 export interface ProjectTask {
   id: string;
