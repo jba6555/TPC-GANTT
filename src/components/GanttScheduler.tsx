@@ -383,9 +383,38 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-base font-semibold text-zinc-900">Gantt Timeline</h3>
-        <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">
-          {ZOOM_LEVELS.find((z) => z.key === zoom)!.label} view · Ctrl+Scroll to zoom
-        </span>
+        <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
+          {(["week", "month", "year"] as ZoomLevel[]).map((level) => {
+            const label = ZOOM_LEVELS.find((z) => z.key === level)!.label;
+            return (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setZoom(level)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  zoom === level
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+          <div className="mx-0.5 h-4 w-px bg-zinc-300" />
+          <button
+            type="button"
+            onClick={() => {
+              const el = viewportRef.current;
+              if (!el) return;
+              const targetScroll = todayPx;
+              el.scrollTo({ left: targetScroll, behavior: "smooth" });
+            }}
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
+          >
+            Today
+          </button>
+        </div>
       </div>
 
       <div className="flex">
