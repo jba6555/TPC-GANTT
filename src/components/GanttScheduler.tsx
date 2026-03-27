@@ -14,27 +14,28 @@ type DragMode = "move" | "resizeStart" | "resizeEnd";
 
 const DRAG_THRESHOLD_PX = 8;
 
-type ZoomLevel = "day" | "week" | "month" | "year" | "3year";
+type ZoomLevel = "week" | "month" | "year";
 
 const ZOOM_LEVELS: { key: ZoomLevel; label: string; pxPerDay: number }[] = [
-  { key: "day", label: "Day", pxPerDay: 28 },
-  { key: "week", label: "Week", pxPerDay: 5 },
-  { key: "month", label: "Month", pxPerDay: 1.5 },
-  { key: "year", label: "Year", pxPerDay: 0.6 },
-  { key: "3year", label: "3 Years", pxPerDay: 0.2 },
+  { key: "week", label: "Week", pxPerDay: 100 },
+  { key: "month", label: "Month", pxPerDay: 28 },
+  { key: "year", label: "Year", pxPerDay: 2 },
 ];
 
 interface TimelineColumn {
   key: string;
   label: string;
   widthPx: number;
-  groupKey: string;
-  groupLabel: string;
+  monthKey: string;
+  monthLabel: string;
+  yearKey: string;
+  yearLabel: string;
 }
 
-interface GroupHeader {
+interface SpanHeader {
   key: string;
   label: string;
+  span: number;
   widthPx: number;
 }
 
@@ -104,7 +105,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     });
   }, [zoom]);
 
-  const { chartStart, chartEnd, pxPerDay, columns, groupHeaders, gridLinePx } = useMemo(() => {
+  const { chartStart, chartEnd, pxPerDay, columns, yearHeaders, monthHeaders, gridLinePx } = useMemo(() => {
     const config = ZOOM_LEVELS.find((z) => z.key === zoom)!;
     const ppd = config.pxPerDay;
 
@@ -116,12 +117,9 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
     const minDate = allDates.length ? dayjs(allDates[0]) : dayjs().subtract(7, "day");
     const maxDate = allDates.length ? dayjs(allDates[allDates.length - 1]) : dayjs().add(45, "day");
 
-    let cs = minDate.startOf("week").subtract(3, "day");
-    let ce = maxDate.endOf("week").add(14, "day");
-
+    let cs: dayjs.Dayjs;
+    let ce: dayjs.Dayjs;
     switch (zoom) {
-      case "day":
-        break;
       case "week":
         cs = minDate.subtract(1, "week").startOf("week");
         ce = maxDate.add(2, "week").endOf("week");
@@ -130,129 +128,70 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         cs = minDate.subtract(1, "month").startOf("month");
         ce = maxDate.add(1, "month").endOf("month");
         break;
-      case "year": {
-        const padStart = minDate.subtract(3, "month");
-        const qm = Math.floor(padStart.month() / 3) * 3;
-        cs = padStart.startOf("year").add(qm, "month");
-        const padEnd = maxDate.add(3, "month");
-        const qme = Math.floor(padEnd.month() / 3) * 3 + 2;
-        ce = padEnd.startOf("year").add(qme, "month").endOf("month");
-        break;
-      }
-      case "3year":
-        cs = minDate.subtract(1, "year").startOf("year");
-        ce = maxDate.add(1, "year").endOf("year");
+      case "year":
+        cs = minDate.subtract(1, "month").startOf("month");
+        ce = maxDate.add(1, "month").endOf("month");
         break;
     }
 
     const cols: TimelineColumn[] = [];
-    switch (zoom) {
-      case "day": {
-        let d = cs;
-        while (!d.isAfter(ce)) {
-          cols.push({
-            key: d.format("YYYY-MM-DD"),
-            label: d.format("D"),
-            widthPx: ppd,
-            groupKey: d.format("YYYY-MM"),
-            groupLabel: d.format("MMMM YYYY"),
-          });
-          d = d.add(1, "day");
-        }
-        break;
+    if (zoom === "week" || zoom === "month") {
+      let d = cs;
+      while (!d.isAfter(ce)) {
+        cols.push({
+          key: d.format("YYYY-MM-DD"),
+          label: d.format("D"),
+          widthPx: ppd,
+          monthKey: d.format("YYYY-MM"),
+          monthLabel: d.format("MMM"),
+          yearKey: d.format("YYYY"),
+          yearLabel: d.format("YYYY"),
+        });
+        d = d.add(1, "day");
       }
-      case "week": {
-        let d = cs;
-        while (d.isBefore(ce)) {
-          const weekEnd = d.add(6, "day");
-          const eff = weekEnd.isAfter(ce) ? ce : weekEnd;
-          const n = eff.diff(d, "day") + 1;
-          cols.push({
-            key: d.format("YYYY-[W]ww"),
-            label: d.format("MMM D"),
-            widthPx: n * ppd,
-            groupKey: d.format("YYYY-MM"),
-            groupLabel: d.format("MMMM YYYY"),
-          });
-          d = d.add(1, "week");
-        }
-        break;
-      }
-      case "month": {
-        let d = cs;
-        while (d.isBefore(ce) || d.isSame(ce, "day")) {
-          const mEnd = d.endOf("month");
-          const eff = mEnd.isAfter(ce) ? ce : mEnd;
-          const n = eff.diff(d, "day") + 1;
-          cols.push({
-            key: d.format("YYYY-MM"),
-            label: d.format("MMM"),
-            widthPx: n * ppd,
-            groupKey: d.format("YYYY"),
-            groupLabel: d.format("YYYY"),
-          });
-          d = eff.add(1, "day");
-          if (d.isAfter(ce)) break;
-        }
-        break;
-      }
-      case "year": {
-        let d = cs;
-        while (d.isBefore(ce) || d.isSame(ce, "day")) {
-          const qMonth = Math.floor(d.month() / 3) * 3;
-          const qEnd = d.startOf("year").add(qMonth + 2, "month").endOf("month");
-          const eff = qEnd.isAfter(ce) ? ce : qEnd;
-          const n = eff.diff(d, "day") + 1;
-          const qNum = Math.floor(qMonth / 3) + 1;
-          cols.push({
-            key: `${d.year()}-Q${qNum}`,
-            label: `Q${qNum}`,
-            widthPx: n * ppd,
-            groupKey: String(d.year()),
-            groupLabel: String(d.year()),
-          });
-          d = eff.add(1, "day");
-          if (d.isAfter(ce)) break;
-        }
-        break;
-      }
-      case "3year": {
-        let d = cs;
-        while (d.isBefore(ce) || d.isSame(ce, "day")) {
-          const yEnd = d.endOf("year");
-          const eff = yEnd.isAfter(ce) ? ce : yEnd;
-          const n = eff.diff(d, "day") + 1;
-          cols.push({
-            key: d.format("YYYY"),
-            label: d.format("YYYY"),
-            widthPx: n * ppd,
-            groupKey: "",
-            groupLabel: "",
-          });
-          d = eff.add(1, "day");
-          if (d.isAfter(ce)) break;
-        }
-        break;
+    } else {
+      let d = cs.startOf("week");
+      while (d.isBefore(ce) || d.isSame(ce, "day")) {
+        const weekEnd = d.add(6, "day");
+        const eff = weekEnd.isAfter(ce) ? ce : weekEnd;
+        const n = eff.diff(d, "day") + 1;
+        cols.push({
+          key: d.format("YYYY-[W]ww"),
+          label: d.format("M/D"),
+          widthPx: n * ppd,
+          monthKey: d.format("YYYY-MM"),
+          monthLabel: d.format("MMM"),
+          yearKey: d.format("YYYY"),
+          yearLabel: d.format("YYYY"),
+        });
+        d = d.add(1, "week");
       }
     }
 
-    const groups: GroupHeader[] = [];
-    let currentGroupKey = "";
+    const years: SpanHeader[] = [];
+    const months: SpanHeader[] = [];
+    let curYear = "";
+    let curMonth = "";
     for (const col of cols) {
-      if (!col.groupKey) continue;
-      if (col.groupKey === currentGroupKey) {
-        groups[groups.length - 1].widthPx += col.widthPx;
+      if (col.yearKey === curYear) {
+        years[years.length - 1].span += 1;
+        years[years.length - 1].widthPx += col.widthPx;
       } else {
-        currentGroupKey = col.groupKey;
-        groups.push({ key: col.groupKey, label: col.groupLabel, widthPx: col.widthPx });
+        curYear = col.yearKey;
+        years.push({ key: col.yearKey, label: col.yearLabel, span: 1, widthPx: col.widthPx });
+      }
+      if (col.monthKey === curMonth) {
+        months[months.length - 1].span += 1;
+        months[months.length - 1].widthPx += col.widthPx;
+      } else {
+        curMonth = col.monthKey;
+        months.push({ key: col.monthKey, label: col.monthLabel, span: 1, widthPx: col.widthPx });
       }
     }
 
-    let glp = 0;
-    if (zoom === "day") glp = ppd;
-    else if (zoom === "week") glp = 7 * ppd;
+    const glp = zoom === "week" ? ppd : zoom === "month" ? ppd : 7 * ppd;
 
-    return { chartStart: cs, chartEnd: ce, pxPerDay: ppd, columns: cols, groupHeaders: groups, gridLinePx: glp };
+    return { chartStart: cs, chartEnd: ce, pxPerDay: ppd, columns: cols, yearHeaders: years, monthHeaders: months, gridLinePx: glp };
   }, [tasks, projects, zoom]);
 
 
@@ -374,9 +313,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
 
   const LABEL_WIDTH = 280;
   const timelineWidth = columns.reduce((sum, c) => sum + c.widthPx, 0);
-  const totalWidth = LABEL_WIDTH + timelineWidth;
   const MIN_BAR_WIDTH = 6;
-  const hasGroupHeaders = groupHeaders.length > 0;
   const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
 
   return (
@@ -420,9 +357,8 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
       <div className="flex">
         {/* Fixed label column */}
         <div className="shrink-0 border-r border-zinc-200" style={{ width: LABEL_WIDTH }}>
-          {hasGroupHeaders && (
-            <div className="border-b border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px]">&nbsp;</div>
-          )}
+          <div className="border-b border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px]">&nbsp;</div>
+          <div className="border-b border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px]">&nbsp;</div>
           <div className="border-b border-zinc-200 bg-white px-2 py-1 text-xs font-semibold text-zinc-600">
             Task
           </div>
@@ -467,38 +403,36 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
           <div className="relative" style={{ width: timelineWidth }}>
             {(() => {
               const gridTemplate = columns.map((c) => `${c.widthPx}px`).join(" ");
-              const groupSpans: { key: string; label: string; span: number; widthPx: number }[] = [];
-              if (hasGroupHeaders) {
-                let currentKey = "";
-                for (const col of columns) {
-                  if (!col.groupKey) continue;
-                  if (col.groupKey === currentKey) {
-                    groupSpans[groupSpans.length - 1].span += 1;
-                    groupSpans[groupSpans.length - 1].widthPx += col.widthPx;
-                  } else {
-                    currentKey = col.groupKey;
-                    groupSpans.push({ key: col.groupKey, label: col.groupLabel, span: 1, widthPx: col.widthPx });
-                  }
-                }
-              }
               return (
                 <>
-                  {hasGroupHeaders && (
-                    <div
-                      className="grid border-b border-zinc-200 bg-zinc-100"
-                      style={{ gridTemplateColumns: gridTemplate }}
-                    >
-                      {groupSpans.map((g) => (
-                        <div
-                          key={g.key}
-                          className="overflow-hidden border-r border-zinc-300 px-1.5 py-1 text-center text-[11px] font-semibold text-zinc-700"
-                          style={{ gridColumn: `span ${g.span}` }}
-                        >
-                          {g.widthPx >= 30 ? g.label : ""}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div
+                    className="grid border-b border-zinc-200 bg-zinc-100"
+                    style={{ gridTemplateColumns: gridTemplate }}
+                  >
+                    {yearHeaders.map((y) => (
+                      <div
+                        key={y.key}
+                        className="overflow-hidden border-r border-zinc-300 px-1.5 py-1 text-center text-[11px] font-semibold text-zinc-700"
+                        style={{ gridColumn: `span ${y.span}` }}
+                      >
+                        {y.widthPx >= 30 ? y.label : ""}
+                      </div>
+                    ))}
+                  </div>
+                  <div
+                    className="grid border-b border-zinc-200 bg-zinc-50"
+                    style={{ gridTemplateColumns: gridTemplate }}
+                  >
+                    {monthHeaders.map((m) => (
+                      <div
+                        key={m.key}
+                        className="overflow-hidden border-r border-zinc-200 px-1 py-1 text-center text-[10px] font-medium text-zinc-600"
+                        style={{ gridColumn: `span ${m.span}` }}
+                      >
+                        {m.widthPx >= 20 ? m.label : ""}
+                      </div>
+                    ))}
+                  </div>
                   <div
                     className="grid border-b border-zinc-200"
                     style={{ gridTemplateColumns: gridTemplate }}
@@ -509,7 +443,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                         className="overflow-hidden border-r border-zinc-100 py-1 text-center text-[10px] text-zinc-500"
                         style={{ minWidth: 0 }}
                       >
-                        {col.widthPx >= 16 ? col.label : ""}
+                        {col.widthPx >= 14 ? col.label : ""}
                       </div>
                     ))}
                   </div>
