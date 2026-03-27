@@ -519,24 +519,17 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 </div>
                 {!isCollapsed &&
                   projectTasks.map((task) => {
-                    const start = dayjs(task.startDate || task.dueDate);
-                    const due = dayjs(task.dueDate);
                     return (
                       <button
                         key={task.id}
                         type="button"
-                        title="View notes"
+                        title={task.title}
                         onClick={() => openTaskEditor(task)}
                         className="flex w-full cursor-pointer items-center justify-end overflow-hidden border-b border-zinc-100 bg-white px-2 text-right transition-colors hover:bg-zinc-50"
                         style={{ height: TASK_ROW_H }}
                       >
                         <div className="min-w-0 w-full text-right">
                           <p className="truncate text-[11px] font-medium leading-tight text-zinc-900">{task.title}</p>
-                          <p className="text-[9px] leading-tight text-zinc-400">
-                            {start.isSame(due, "day")
-                              ? start.format("MM/DD/YY")
-                              : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`}
-                          </p>
                         </div>
                       </button>
                     );
@@ -642,7 +635,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           const barOpt = task.assignedTo ? options.find((o) => o.value === task.assignedTo) : null;
                           const barColor = barOpt?.color || "#3b82f6";
                           const barTextColor = barOpt?.textColor || "#ffffff";
-                          const labelFits = barWidth >= 60;
+                          const dateRangeText = start.isSame(due, "day")
+                            ? start.format("MM/DD/YY")
+                            : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`;
+                          const rangeFits = barWidth >= 96;
                           return (
                             <>
                               <div
@@ -672,12 +668,12 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                   onPointerDown={(e) => handlePointerDown(e, task, "move")}
                                   className="relative h-full min-w-0 flex-1 cursor-grab overflow-visible"
                                 >
-                                  {labelFits && (
+                                  {rangeFits && (
                                     <span
                                       className="sticky left-0 inline-block whitespace-nowrap px-2"
-                                      style={{ fontSize: 12, lineHeight: `${TASK_BAR_H}px` }}
+                                      style={{ fontSize: 11, lineHeight: `${TASK_BAR_H}px` }}
                                     >
-                                      {task.title}
+                                      {dateRangeText}
                                     </span>
                                   )}
                                 </div>
@@ -687,17 +683,17 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                   style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
                                 />
                               </div>
-                              {!labelFits && (
+                              {!rangeFits && (
                                 <span
                                   className="pointer-events-none absolute whitespace-nowrap text-zinc-700"
                                   style={{
                                     left: left + barWidth + 4,
                                     top: taskBarTop,
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     lineHeight: `${TASK_BAR_H}px`,
                                   }}
                                 >
-                                  {task.title}
+                                  {dateRangeText}
                                 </span>
                               )}
                             </>
