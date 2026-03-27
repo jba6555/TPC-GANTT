@@ -1,8 +1,33 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function allowedUsersPath() {
+      return /databases/$(database)/documents/settings/allowedUsers;
+    }
+
+    function allowedEmailsList() {
+      return exists(allowedUsersPath()) &&
+        get(allowedUsersPath()).data.emails is list
+        ? get(allowedUsersPath()).data.emails
+        : [];
+    }
+
+    function isEmailAllowed() {
+      return request.auth != null && (
+        allowedEmailsList().size() == 0 ||
+        request.auth.token.email in allowedEmailsList()
+      );
+    }
+
+    // So signed-in users can load the list to check access before other rules apply.
+    match /settings/allowedUsers {
+      allow read: if request.auth != null;
+      allow write: if isEmailAllowed();
+    }
+
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isEmailAllowed();
     }
   }
 }

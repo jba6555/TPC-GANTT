@@ -3,23 +3,24 @@
 import dayjs from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import ProjectList from "@/components/ProjectList";
 import GanttScheduler from "@/components/GanttScheduler";
 import { logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
 import HistoryLog from "@/components/HistoryLog";
 import AssignedToManager from "@/components/AssignedToManager";
+import UserManager from "@/components/UserManager";
 import CsvBulkUpload from "@/components/CsvBulkUpload";
+import { isEmailAllowlisted } from "@/lib/allowedUsers";
 import {
   createProject,
   createTask,
-  deleteProjectAndTasks,
   revertChange,
+  saveAllowedUsers,
   saveAssignedOptions,
   subscribeToProjects,
   subscribeToAllTasks,
   subscribeToChangelog,
   subscribeToAssignedOptions,
-  updateProject,
+  subscribeToAllowedUsers,
   updateTask,
   updateTaskDates,
 } from "@/lib/db";
@@ -27,16 +28,17 @@ import type { AssignedOption, BulkImportCsvRow, ChangelogEntry, Project, Project
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v7";
+  const APP_VERSION = "frozen-col-v8";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [allTasks, setAllTasks] = useState<ProjectTask[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [assignedToOpen, setAssignedToOpen] = useState(false);
+  const [usersOpen, setUsersOpen] = useState(false);
+  const [allowedUserEmails, setAllowedUserEmails] = useState<string[]>([]);
+  const [allowedUsersReady, setAllowedUsersReady] = useState(false);
   const [assignedOptions, setAssignedOptions] = useState<AssignedOption[]>(DEFAULT_ASSIGNED_OPTIONS);
   const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
@@ -89,17 +91,9 @@ export default function Home() {
 
   useEffect(() => {
     if (!authReady || !userId) return;
-    const unsubscribe = subscribeToProjects((incoming) => {
-      setProjects(incoming);
-      const stillExists = selectedProjectId
-        ? incoming.some((p) => p.id === selectedProjectId)
-        : false;
-      if (!stillExists) {
-        setSelectedProjectId(incoming[0]?.id ?? "");
-      }
-    });
+    const unsubscribe = subscribeToProjects(setProjects);
     return () => unsubscribe();
-  }, [authReady, userId, selectedProjectId]);
+  }, [authReady, userId]);
 
   useEffect(() => {
     if (!authReady || !userId) return;
@@ -119,11 +113,33 @@ export default function Home() {
     return () => unsubscribe();
   }, [authReady, userId]);
 
+  useEffect(() => {
+    if (!authReady || !userId) {
+      setAllowedUserEmails([]);
+      setAllowedUsersReady(false);
+      return;
+    }
+    setAllowedUsersReady(false);
+    const unsubscribe = subscribeToAllowedUsers((emails) => {
+      setAllowedUserEmails(emails);
+      setAllowedUsersReady(true);
+    });
+    return () => unsubscribe();
+  }, [authReady, userId]);
+
+  useEffect(() => {
+    if (!authReady || !userId || !allowedUsersReady || !userEmail) return;
+    if (isEmailAllowlisted(userEmail, allowedUserEmails)) return;
+    void (async () => {
+      await logout();
+      router.replace("/login?denied=1");
+    })();
+  }, [authReady, userId, userEmail, allowedUsersReady, allowedUserEmails, router]);
+
   const actor = useMemo(() => ({ userId, userEmail }), [userId, userEmail]);
 
   async function handleAddProject(input: ProjectInput) {
-    const id = await createProject(userId, input, userEmail);
-    setSelectedProjectId(id);
+    await createProject(userId, input, userEmail);
   }
 
   async function handleAddTaskForProject(
@@ -147,17 +163,6 @@ export default function Home() {
       notes: input.notes,
       assignedTo: (input.assignedTo as import("@/types/scheduler").AssignedTo) || undefined,
     }, sortOrder, { ...actor, projectName });
-  }
-
-  async function handleDeleteProject(projectId: string) {
-    await deleteProjectAndTasks(projectId, actor);
-  }
-
-  async function handleUpdateProject(
-    projectId: string,
-    input: ProjectInput,
-  ) {
-    await updateProject(projectId, input, actor);
   }
 
   async function handleUpdateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
@@ -249,7 +254,6 @@ export default function Home() {
     await createTask(projectId, { title: "Full Application due", type: "milestone", dueDate: "2026-05-15" }, 1, seedActor);
     await createTask(projectId, { title: "Under Contract", type: "task", startDate: "2026-03-13", dueDate: "2027-01-01" }, 2, seedActor);
     await createTask(projectId, { title: "Meeting with NCHFA", type: "milestone", dueDate: "2026-06-01" }, 3, seedActor);
-    setSelectedProjectId(projectId);
   }
 
   if (!authReady) {
@@ -327,6 +331,20 @@ export default function Home() {
           <CsvBulkUpload onBulkUpload={handleBulkUpload} />
           <button
             type="button"
+            onClick={() => setUsersOpen((prev) => !prev)}
+            className={`flex items-center gap-1.5 rounded px-3 py-1 text-sm font-medium transition-colors ${
+              usersOpen
+                ? "bg-blue-600 text-white"
+                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+            </svg>
+            Users
+          </button>
+          <button
+            type="button"
             onClick={() => setAssignedToOpen((prev) => !prev)}
             className={`flex items-center gap-1.5 rounded px-3 py-1 text-sm font-medium transition-colors ${
               assignedToOpen
@@ -349,50 +367,7 @@ export default function Home() {
         </div>
       </header>
 
-      <div className={`grid gap-4 ${sidebarOpen ? "lg:grid-cols-[320px_1fr]" : "lg:grid-cols-[auto_1fr]"}`}>
-        {sidebarOpen ? (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(false)}
-              title="Collapse sidebar"
-              className="absolute -right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-500 shadow-sm hover:bg-zinc-100 hover:text-zinc-700"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                <path fillRule="evenodd" d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
-              </svg>
-            </button>
-            <ProjectList
-              projects={projects}
-              tasks={allTasks}
-              selectedProjectId={selectedProjectId}
-              assignedOptions={assignedOptions}
-              onSelect={setSelectedProjectId}
-              onDeleteProject={handleDeleteProject}
-              onUpdateProject={handleUpdateProject}
-              onAddTask={handleAddTaskForProject}
-              onUpdateTaskDates={handleUpdateTaskDates}
-              onUpdateTask={handleUpdateTask}
-            />
-          </div>
-        ) : (
-          <div className="flex flex-col items-center rounded-lg border border-zinc-200 bg-white py-3 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              title="Expand sidebar"
-              className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-                <path fillRule="evenodd" d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
-              </svg>
-            </button>
-            <span className="mt-2 text-xs font-medium text-zinc-400" style={{ writingMode: "vertical-lr" }}>
-              Projects
-            </span>
-          </div>
-        )}
-        <section className="min-w-0 space-y-3">
+      <section className="min-w-0 space-y-3">
           {projects.length === 0 && (
             <div className="rounded-lg border border-zinc-200 bg-white p-3">
               <h2 className="text-lg font-semibold text-zinc-900">No projects yet</h2>
@@ -420,8 +395,7 @@ export default function Home() {
             onUpdateTask={handleUpdateTask}
             onAddTask={handleAddTaskForProject}
           />
-        </section>
-      </div>
+      </section>
 
       {historyOpen && (
         <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl">
@@ -439,6 +413,26 @@ export default function Home() {
           </div>
           <div className="flex-1 overflow-y-auto p-3">
             <HistoryLog entries={changelog} onRevert={handleRevertChange} />
+          </div>
+        </div>
+      )}
+
+      {usersOpen && (
+        <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+            <h2 className="text-lg font-semibold text-zinc-900">Google sign-in users</h2>
+            <button
+              type="button"
+              onClick={() => setUsersOpen(false)}
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <UserManager emails={allowedUserEmails} onSave={saveAllowedUsers} currentUserEmail={userEmail} />
           </div>
         </div>
       )}

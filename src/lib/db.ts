@@ -440,6 +440,53 @@ export async function saveAssignedOptions(options: AssignedOption[]) {
 }
 
 // ---------------------------------------------------------------------------
+// Allowed Google accounts: settings/allowedUsers { emails: string[] }
+// Empty list = any authenticated user may use the app.
+// ---------------------------------------------------------------------------
+
+function normalizeAllowedEmail(raw: string) {
+  return raw.trim().toLowerCase();
+}
+
+export function subscribeToAllowedUsers(
+  callback: (emails: string[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const db = getFirestoreDb();
+  const docRef = doc(db, "settings", "allowedUsers");
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const raw = data.emails as string[] | undefined;
+        if (Array.isArray(raw)) {
+          const emails = raw
+            .map((e) => (typeof e === "string" ? normalizeAllowedEmail(e) : ""))
+            .filter(Boolean);
+          callback([...new Set(emails)].sort((a, b) => a.localeCompare(b)));
+          return;
+        }
+      }
+      callback([]);
+    },
+    (error) => {
+      console.error("[Firestore] allowedUsers listener:", error);
+      onError?.(error);
+    },
+  );
+}
+
+export async function saveAllowedUsers(emails: string[]) {
+  const db = getFirestoreDb();
+  const docRef = doc(db, "settings", "allowedUsers");
+  const normalized = [...new Set(emails.map(normalizeAllowedEmail).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  await setDoc(docRef, { emails: normalized }, { merge: false });
+}
+
+// ---------------------------------------------------------------------------
 // Changelog: subscribe + revert
 // ---------------------------------------------------------------------------
 

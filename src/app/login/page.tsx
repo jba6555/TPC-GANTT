@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginWithGoogle, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
+import type { User } from "firebase/auth";
+import { loginWithGoogle, logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
+import { isEmailAllowlisted } from "@/lib/allowedUsers";
+import { subscribeToAllowedUsers } from "@/lib/db";
 import { getFirebaseAuth } from "@/lib/firebase";
 
 function parseFirebaseError(e: unknown): { code?: string; message?: string } {
@@ -80,10 +83,17 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [allowedEmails, setAllowedEmails] = useState<string[]>([]);
+  const [allowedReady, setAllowedReady] = useState(false);
+  const [allowedUsersLoadError, setAllowedUsersLoadError] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     setOrigin(typeof window !== "undefined" ? window.location.origin : "");
+    if (typeof window !== "undefined" && window.location.search.includes("denied=1")) {
+      setError("That Google account is not allowed to use this app. Ask an administrator to add your email under Users.");
+    }
   }, []);
 
   useEffect(() => {
@@ -96,8 +106,7 @@ export default function LoginPage() {
         if (cancelled) return;
         const auth = getFirebaseAuth();
         if (auth.currentUser) {
-          router.replace("/");
-          return;
+          setAuthUser(auth.currentUser);
         }
       } catch (e: unknown) {
         if (!cancelled) {
@@ -107,9 +116,7 @@ export default function LoginPage() {
       }
 
       unsubscribe = subscribeToAuth((user) => {
-        if (user) {
-          router.replace("/");
-        }
+        setAuthUser(user);
       });
     })();
 
@@ -119,14 +126,40 @@ export default function LoginPage() {
     };
   }, [router]);
 
+  useEffect(() => {
+    if (!authUser) {
+      setAllowedEmails([]);
+      setAllowedReady(false);
+      return;
+    }
+    setAllowedReady(false);
+    const unsub = subscribeToAllowedUsers((emails) => {
+      setAllowedEmails(emails);
+      setAllowedReady(true);
+    });
+    return () => unsub();
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser || !allowedReady) return;
+    if (!isEmailAllowlisted(authUser.email, allowedEmails)) {
+      void (async () => {
+        await logout();
+        setError(
+          "That Google account is not allowed to use this app. Ask an administrator to add your email under Users.",
+        );
+      })();
+      return;
+    }
+    router.replace("/");
+  }, [authUser, allowedReady, allowedEmails, router]);
+
   async function handleLogin() {
     setError(null);
     setLoading(true);
     try {
-      const usedFullPageRedirect = await loginWithGoogle();
-      if (!usedFullPageRedirect) {
-        router.replace("/");
-      }
+      await loginWithGoogle();
+      // Navigation happens in the allowlist effect after Firestore syncs.
     } catch (loginError: unknown) {
       setError(formatAuthError(loginError, origin || (typeof window !== "undefined" ? window.location.origin : "")));
       console.error(loginError);
