@@ -9,6 +9,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
   where,
   writeBatch,
@@ -29,6 +30,36 @@ function changelogCollectionRef() {
   return collection(getFirestoreDb(), "changelog");
 }
 
+/** Firestore rejects `undefined` anywhere in a document unless settings opt out; strip recursively. */
+function omitUndefinedDeep(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (value instanceof Timestamp) return value;
+  if (typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    return value.map(omitUndefinedDeep).filter((item) => item !== undefined);
+  }
+  const obj = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined) continue;
+    const next = omitUndefinedDeep(v);
+    if (next !== undefined) {
+      out[k] = next;
+    }
+  }
+  return out;
+}
+
+function sanitizeChangelogSnapshot(snapshot: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (snapshot === null) return null;
+  const sanitized = omitUndefinedDeep(snapshot);
+  if (sanitized === null || typeof sanitized !== "object" || Array.isArray(sanitized)) {
+    return snapshot;
+  }
+  return sanitized as Record<string, unknown>;
+}
+
 async function logChange(entry: {
   userId: string;
   userEmail: string;
@@ -40,11 +71,22 @@ async function logChange(entry: {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
 }) {
+  const payload: Record<string, unknown> = {
+    userId: entry.userId,
+    userEmail: entry.userEmail,
+    action: entry.action,
+    entityType: entry.entityType,
+    entityId: entry.entityId,
+    description: entry.description,
+    before: sanitizeChangelogSnapshot(entry.before),
+    after: sanitizeChangelogSnapshot(entry.after),
+    timestamp: serverTimestamp(),
+  };
+  if (entry.projectName !== undefined && entry.projectName !== "") {
+    payload.projectName = entry.projectName;
+  }
   try {
-    await addDoc(changelogCollectionRef(), {
-      ...entry,
-      timestamp: serverTimestamp(),
-    });
+    await addDoc(changelogCollectionRef(), payload);
   } catch (e) {
     console.error("[Changelog] failed to log change:", e);
   }
@@ -300,6 +342,44 @@ export async function updateTask(
   }
 }
 
+export async function deleteTask(
+  taskId: string,
+  actor?: { userId: string; userEmail: string },
+) {
+  const db = getFirestoreDb();
+  const taskRef = doc(db, "tasks", taskId);
+
+  let taskBefore: Record<string, unknown> | null = null;
+  let projectName: string | undefined;
+  let taskTitle = "task";
+  if (actor) {
+    const snap = await getDoc(taskRef);
+    if (snap.exists()) {
+      const d = snap.data();
+      taskBefore = { id: taskId, ...d };
+      taskTitle = (d.title as string) ?? "task";
+      const projSnap = await getDoc(doc(db, "projects", (d.projectId as string) ?? ""));
+      projectName = projSnap.exists() ? (projSnap.data().name as string) : undefined;
+    }
+  }
+
+  await deleteDoc(taskRef);
+
+  if (actor) {
+    await logChange({
+      userId: actor.userId,
+      userEmail: actor.userEmail,
+      action: "delete_tasks",
+      entityType: "task",
+      entityId: taskId,
+      projectName,
+      description: `Deleted task "${taskTitle}"`,
+      before: taskBefore ? ({ tasks: [taskBefore] } as Record<string, unknown>) : null,
+      after: null,
+    });
+  }
+}
+
 const FIRESTORE_BATCH_LIMIT = 500;
 
 /**
@@ -488,11 +568,17 @@ export async function saveAllowedUsers(emails: string[]) {
 // Changelog: subscribe + revert
 // ---------------------------------------------------------------------------
 
+export type SubscribeToChangelogOptions = {
+  maxEntries?: number;
+  onError?: (error: Error) => void;
+};
+
 export function subscribeToChangelog(
   callback: (entries: ChangelogEntry[]) => void,
-  maxEntries = 200,
-  onError?: (error: Error) => void,
+  options?: SubscribeToChangelogOptions,
 ) {
+  const maxEntries = options?.maxEntries ?? 200;
+  const onError = options?.onError;
   // Full collection + client sort avoids composite index requirements (same pattern as projects).
   const changelogCollection = changelogCollectionRef();
   return onSnapshot(
@@ -521,7 +607,7 @@ export function subscribeToChangelog(
     },
     (error) => {
       console.error("[Firestore] changelog listener:", error);
-      onError?.(error);
+      onError?.(error instanceof Error ? error : new Error(String(error)));
     },
   );
 }
@@ -576,7 +662,9 @@ export async function revertChange(entry: ChangelogEntry, actor: { userId: strin
     }
     case "delete_tasks": {
       if (!entry.before) throw new Error("No snapshot to restore");
-      const tasksArr = entry.before as unknown as Record<string, unknown>[];
+      const tasksArr = Array.isArray(entry.before)
+        ? (entry.before as unknown as Record<string, unknown>[])
+        : ((entry.before.tasks as Record<string, unknown>[] | undefined) ?? []);
       const batch = writeBatch(db);
       for (const task of tasksArr) {
         const { id: taskId, updatedAt, ...taskData } = task;
