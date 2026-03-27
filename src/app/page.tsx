@@ -288,16 +288,9 @@ export default function Home() {
           </div>
         )}
         <section className="min-w-0 space-y-3">
-          <div className="rounded-lg border border-zinc-200 bg-white p-3">
-            <h2 className="text-lg font-semibold text-zinc-900">
-              {selectedProject ? selectedProject.name : "Select a project"}
-            </h2>
-            {selectedProject ? (
-              <p className="text-sm text-zinc-600">
-                Contract: {selectedProject.contractStart || "N/A"} to{" "}
-                {selectedProject.contractEnd || "N/A"}
-              </p>
-            ) : (
+          {!selectedProject && (
+            <div className="rounded-lg border border-zinc-200 bg-white p-3">
+              <h2 className="text-lg font-semibold text-zinc-900">Select a project</h2>
               <div className="flex items-center gap-2">
                 <p className="text-sm text-zinc-500">No projects yet. Add one to begin.</p>
                 <button
@@ -308,8 +301,8 @@ export default function Home() {
                   Seed Example Project
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {selectedProject && (
             <GanttScheduler
