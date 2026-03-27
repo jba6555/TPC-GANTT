@@ -1,12 +1,21 @@
 /**
  * Allowed-user list lives in Firestore (`settings/allowedUsers`).
- * Empty list = any authenticated Google account may use the app (legacy behavior).
- * Non-empty = only those emails (normalized lowercase) may access data.
  *
- * Optional recovery: set `NEXT_PUBLIC_SCHEDULER_ADMIN_EMAILS` (comma-separated) in
- * Vercel / `.env.local` so those addresses always pass the client check if you lock
- * yourself out of Firestore. Prefer fixing `settings/allowedUsers` in the console.
+ * Enforcement is **opt-in**: set `NEXT_PUBLIC_USER_ALLOWLIST_ENABLED=true` in Vercel
+ * / `.env.local` to restrict who can use the app. When unset or not `"true"`, any
+ * Google sign-in works (same as before this feature).
+ *
+ * When enforcement is on:
+ * - Empty list = any authenticated Google account may use the app.
+ * - Non-empty = only those emails (normalized lowercase) may access data.
+ *
+ * Optional recovery when enforced: `NEXT_PUBLIC_SCHEDULER_ADMIN_EMAILS` (comma-separated)
+ * always passes the check.
  */
+export function isUserAllowlistEnforced(): boolean {
+  return process.env.NEXT_PUBLIC_USER_ALLOWLIST_ENABLED === "true";
+}
+
 function parseSchedulerAdminOverrideEmails(): string[] {
   const raw = process.env.NEXT_PUBLIC_SCHEDULER_ADMIN_EMAILS ?? "";
   return raw
@@ -19,6 +28,7 @@ export function isEmailAllowlisted(
   email: string | null | undefined,
   allowedEmails: string[],
 ): boolean {
+  if (!isUserAllowlistEnforced()) return true;
   if (!email?.trim()) return false;
   const norm = email.trim().toLowerCase();
   if (parseSchedulerAdminOverrideEmails().includes(norm)) return true;

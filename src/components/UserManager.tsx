@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isUserAllowlistEnforced } from "@/lib/allowedUsers";
 
 interface UserManagerProps {
   emails: string[];
@@ -92,12 +93,22 @@ export default function UserManager({ emails, onSave, currentUserEmail }: UserMa
 
   const currentNorm = currentUserEmail ? normalizeEmail(currentUserEmail) : "";
 
+  const enforcementOn = isUserAllowlistEnforced();
+
   return (
     <div className="space-y-4">
+      {!enforcementOn && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          User restrictions are <strong className="font-medium">off</strong> until you set{" "}
+          <code className="rounded bg-amber-100 px-1">NEXT_PUBLIC_USER_ALLOWLIST_ENABLED=true</code> in Vercel (or{" "}
+          <code className="rounded bg-amber-100 px-1">.env.local</code>
+          ). The list below is saved for when you turn that on.
+        </p>
+      )}
       <p className="text-xs leading-relaxed text-zinc-600">
         Each entry must match the <strong className="font-medium text-zinc-800">Google account email</strong> someone
-        uses to sign in. While this list is <strong className="font-medium text-zinc-800">empty</strong>, any Google
-        account can use the app. After you add one or more emails, <strong className="font-medium text-zinc-800">only</strong>{" "}
+        uses to sign in. When enforcement is on and this list is <strong className="font-medium text-zinc-800">empty</strong>, any Google
+        account can use the app. When enforcement is on and you add one or more emails, <strong className="font-medium text-zinc-800">only</strong>{" "}
         those accounts can load projects and the timeline. Saving a non-empty list automatically includes your
         current sign-in email so you do not lock yourself out.
       </p>
