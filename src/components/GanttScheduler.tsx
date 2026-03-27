@@ -157,7 +157,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         const n = eff.diff(d, "day") + 1;
         cols.push({
           key: d.format("YYYY-[W]ww"),
-          label: d.format("M/D"),
+          label: d.format("D"),
           widthPx: n * ppd,
           monthKey: d.format("YYYY-MM"),
           monthLabel: d.format("MMM"),
@@ -412,10 +412,12 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                     {yearHeaders.map((y) => (
                       <div
                         key={y.key}
-                        className="overflow-hidden border-r border-zinc-300 px-1.5 py-1 text-center text-[11px] font-semibold text-zinc-700"
+                        className="relative overflow-visible border-r border-zinc-300 py-1"
                         style={{ gridColumn: `span ${y.span}` }}
                       >
-                        {y.widthPx >= 30 ? y.label : ""}
+                        <div className="sticky left-0 w-fit px-2 text-[11px] font-semibold text-zinc-700">
+                          {y.label}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -426,10 +428,12 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                     {monthHeaders.map((m) => (
                       <div
                         key={m.key}
-                        className="overflow-hidden border-r border-zinc-200 px-1 py-1 text-center text-[10px] font-medium text-zinc-600"
+                        className="relative overflow-visible border-r border-zinc-200 py-1"
                         style={{ gridColumn: `span ${m.span}` }}
                       >
-                        {m.widthPx >= 20 ? m.label : ""}
+                        <div className="sticky left-0 w-fit px-2 text-[10px] font-medium text-zinc-600">
+                          {m.label}
+                        </div>
                       </div>
                     ))}
                   </div>
