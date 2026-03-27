@@ -30,7 +30,7 @@ import type { AssignedOption, BulkImportCsvRow, ChangelogEntry, Project, Project
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v10";
+  const APP_VERSION = "frozen-col-v11";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
