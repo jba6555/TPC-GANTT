@@ -2,13 +2,17 @@
 
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Project, ProjectTask } from "@/types/scheduler";
+import type { AssignedTo, Project, ProjectTask } from "@/types/scheduler";
 import { ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 interface GanttSchedulerProps {
   projects: Project[];
   tasks: ProjectTask[];
   onUpdateTaskDates: (taskId: string, startDate?: string, dueDate?: string) => Promise<void>;
+  onUpdateTask: (
+    taskId: string,
+    fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
+  ) => Promise<void>;
 }
 
 type DragMode = "move" | "resizeStart" | "resizeEnd";
@@ -43,10 +47,18 @@ interface SpanHeader {
 
 const ZOOM_KEYS: ZoomLevel[] = ZOOM_LEVELS.map((z) => z.key);
 
-export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: GanttSchedulerProps) {
+export default function GanttScheduler({ projects, tasks, onUpdateTaskDates, onUpdateTask }: GanttSchedulerProps) {
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [notesTask, setNotesTask] = useState<ProjectTask | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editStartDate, setEditStartDate] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editAssignedTo, setEditAssignedTo] = useState<AssignedTo>("");
+  const [editStatus, setEditStatus] = useState<ProjectTask["status"]>("not_started");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   /** True after pointer moved enough to count as a drag (move/resize). Used so click can open notes after a tap. */
   const dragOccurredRef = useRef(false);
@@ -54,6 +66,17 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
   const hasScrolledToToday = useRef(false);
   const scrollFractionRef = useRef<number | null>(null);
   const scrollToTodayRef = useRef(false);
+
+  const openTaskEditor = useCallback((task: ProjectTask) => {
+    setNotesTask(task);
+    setEditTitle(task.title);
+    setEditStartDate(task.startDate || task.dueDate);
+    setEditDueDate(task.dueDate);
+    setEditNotes(task.notes || "");
+    setEditAssignedTo(task.assignedTo || "");
+    setEditStatus(task.status);
+    setEditError(null);
+  }, []);
 
   const todayMarkerRef = useCallback((node: HTMLDivElement | null) => {
     if (!node || hasScrolledToToday.current) return;
@@ -280,7 +303,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
       window.removeEventListener("pointercancel", onCancel);
 
       if (mode === "move" && !hasDragged) {
-        setNotesTask(task);
+        openTaskEditor(task);
         return;
       }
 
@@ -403,7 +426,7 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                       key={task.id}
                       type="button"
                       title="View notes"
-                      onClick={() => setNotesTask(task)}
+                      onClick={() => openTaskEditor(task)}
                       className="flex w-full cursor-pointer items-center overflow-hidden border-b border-zinc-100 bg-white px-2 transition-colors hover:bg-zinc-50"
                       style={{ height: TASK_ROW_H }}
                     >
@@ -515,47 +538,59 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                             : {}),
                         }}
                       >
-                        <div
-                          data-task-id={task.id}
-                          className={`absolute top-2 flex h-8 items-center rounded text-white ${pending === task.id ? "opacity-60" : ""}`}
-                          style={{
-                            left,
-                            width: barWidth,
-                            cursor: "grab",
-                            backgroundColor: (() => {
-                              const opt = task.assignedTo ? ASSIGNED_OPTIONS.find((o) => o.value === task.assignedTo) : null;
-                              const base = opt?.color || "#3b82f6";
-                              return dragTaskId === task.id ? base : base;
-                            })(),
-                          }}
-                          onClick={() => {
-                            if (!dragOccurredRef.current) {
-                              setNotesTask(task);
-                            }
-                          }}
-                        >
-                          <div
-                            onPointerDown={(e) => handlePointerDown(e, task, "resizeStart")}
-                            className="h-full w-2 shrink-0 cursor-ew-resize rounded-l"
-                            style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
-                          />
-                          <div
-                            onPointerDown={(e) => handlePointerDown(e, task, "move")}
-                            className="relative h-full min-w-0 flex-1 cursor-grab overflow-visible"
-                          >
-                            <span
-                              className="sticky left-0 inline-block whitespace-nowrap px-2 leading-8"
-                              style={{ fontSize: 13 }}
-                            >
-                              {task.title}
-                            </span>
-                          </div>
-                          <div
-                            onPointerDown={(e) => handlePointerDown(e, task, "resizeEnd")}
-                            className="h-full w-2 shrink-0 cursor-ew-resize rounded-r"
-                            style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
-                          />
-                        </div>
+                        {(() => {
+                          const barColor = (() => {
+                            const opt = task.assignedTo ? ASSIGNED_OPTIONS.find((o) => o.value === task.assignedTo) : null;
+                            return opt?.color || "#3b82f6";
+                          })();
+                          const labelFits = barWidth >= 60;
+                          return (
+                            <>
+                              <div
+                                data-task-id={task.id}
+                                className={`absolute top-2 flex h-8 items-center rounded text-white ${pending === task.id ? "opacity-60" : ""}`}
+                                style={{ left, width: barWidth, cursor: "grab", backgroundColor: barColor }}
+                                onClick={() => {
+                                  if (!dragOccurredRef.current) {
+                                    openTaskEditor(task);
+                                  }
+                                }}
+                              >
+                                <div
+                                  onPointerDown={(e) => handlePointerDown(e, task, "resizeStart")}
+                                  className="h-full w-2 shrink-0 cursor-ew-resize rounded-l"
+                                  style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
+                                />
+                                <div
+                                  onPointerDown={(e) => handlePointerDown(e, task, "move")}
+                                  className="relative h-full min-w-0 flex-1 cursor-grab overflow-visible"
+                                >
+                                  {labelFits && (
+                                    <span
+                                      className="sticky left-0 inline-block whitespace-nowrap px-2 leading-8"
+                                      style={{ fontSize: 13 }}
+                                    >
+                                      {task.title}
+                                    </span>
+                                  )}
+                                </div>
+                                <div
+                                  onPointerDown={(e) => handlePointerDown(e, task, "resizeEnd")}
+                                  className="h-full w-2 shrink-0 cursor-ew-resize rounded-r"
+                                  style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
+                                />
+                              </div>
+                              {!labelFits && (
+                                <span
+                                  className="pointer-events-none absolute top-2 whitespace-nowrap leading-8 text-zinc-700"
+                                  style={{ left: left + barWidth + 4, fontSize: 12 }}
+                                >
+                                  {task.title}
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -579,15 +614,8 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
           <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
-                <h3 id="task-notes-title" className="text-lg font-semibold text-zinc-900">
-                  {notesTask.title}
-                </h3>
                 <p className="text-sm text-zinc-600">
                   {projects.find((p) => p.id === notesTask.projectId)?.name ?? "Project"}
-                </p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  {dayjs(notesTask.startDate || notesTask.dueDate).format("MMM D, YYYY")} –{" "}
-                  {dayjs(notesTask.dueDate).format("MMM D, YYYY")}
                 </p>
               </div>
               <button
@@ -598,16 +626,141 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
                 ✕
               </button>
             </div>
-            <div className="rounded-md border border-zinc-100 bg-zinc-50 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Notes</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">
-                {notesTask.notes?.trim() ? notesTask.notes : "No notes for this task."}
-              </p>
-            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!notesTask) return;
+                if (!editTitle.trim()) {
+                  setEditError("Title is required.");
+                  return;
+                }
+                if (!editStartDate || !editDueDate) {
+                  setEditError("Start and due dates are required.");
+                  return;
+                }
+                if (editStartDate > editDueDate) {
+                  setEditError("Start date must be on or before due date.");
+                  return;
+                }
+                setEditError(null);
+                setEditSaving(true);
+                void onUpdateTask(notesTask.id, {
+                  title: editTitle.trim(),
+                  startDate: editStartDate,
+                  dueDate: editDueDate,
+                  notes: editNotes,
+                  assignedTo: editAssignedTo,
+                  status: editStatus,
+                })
+                  .then(() => {
+                    setNotesTask((prev) => {
+                      if (!prev || prev.id !== notesTask.id) return prev;
+                      return {
+                        ...prev,
+                        title: editTitle.trim(),
+                        startDate: editStartDate,
+                        dueDate: editDueDate,
+                        notes: editNotes,
+                        assignedTo: editAssignedTo,
+                        status: editStatus,
+                      };
+                    });
+                  })
+                  .catch((err: unknown) => {
+                    const message =
+                      err && typeof err === "object" && "message" in err
+                        ? String((err as { message?: string }).message)
+                        : "";
+                    setEditError(message || "Could not update task.");
+                    console.error(err);
+                  })
+                  .finally(() => setEditSaving(false));
+              }}
+              className="space-y-3"
+            >
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-700">Title</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  required
+                  className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">Start</label>
+                  <input
+                    type="date"
+                    value={editStartDate}
+                    onChange={(e) => setEditStartDate(e.target.value)}
+                    required
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">Due</label>
+                  <input
+                    type="date"
+                    value={editDueDate}
+                    onChange={(e) => setEditDueDate(e.target.value)}
+                    required
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">Assigned To</label>
+                  <select
+                    value={editAssignedTo}
+                    onChange={(e) => setEditAssignedTo(e.target.value as AssignedTo)}
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  >
+                    {ASSIGNED_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label || "(none)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as ProjectTask["status"])}
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  >
+                    <option value="not_started">Not Started</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="complete">Complete</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-700">Notes</label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  rows={3}
+                  className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
+                  placeholder="Optional notes"
+                />
+              </div>
+              {editError && <p className="text-xs text-red-600">{editError}</p>}
+              <button
+                type="submit"
+                disabled={editSaving}
+                className="w-full rounded bg-blue-600 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {editSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </form>
             <button
               type="button"
               onClick={() => setNotesTask(null)}
-              className="mt-4 w-full rounded-lg bg-zinc-900 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="mt-2 w-full rounded-lg bg-zinc-900 py-2 text-sm font-medium text-white hover:bg-zinc-800"
             >
               Close
             </button>

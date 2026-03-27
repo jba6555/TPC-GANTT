@@ -30,6 +30,10 @@ interface ProjectListProps {
     assignedTo?: string;
   }) => Promise<void>;
   onUpdateTaskDates: (taskId: string, startDate?: string, dueDate?: string) => Promise<void>;
+  onUpdateTask: (
+    taskId: string,
+    fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
+  ) => Promise<void>;
   onBulkUpload: (rows: BulkImportCsvRow[]) => Promise<{ createdProjects: number; createdTasks: number }>;
 }
 
@@ -43,6 +47,7 @@ export default function ProjectList({
   onUpdateProject,
   onAddTask,
   onUpdateTaskDates,
+  onUpdateTask,
   onBulkUpload,
 }: ProjectListProps) {
   const [showForm, setShowForm] = useState(false);
@@ -93,6 +98,10 @@ export default function ProjectList({
   const [notesTask, setNotesTask] = useState<ProjectTask | null>(null);
   const [notesStartDate, setNotesStartDate] = useState("");
   const [notesDueDate, setNotesDueDate] = useState("");
+  const [notesEditTitle, setNotesEditTitle] = useState("");
+  const [notesEditNotes, setNotesEditNotes] = useState("");
+  const [notesEditAssignedTo, setNotesEditAssignedTo] = useState<AssignedTo>("");
+  const [notesEditStatus, setNotesEditStatus] = useState<ProjectTask["status"]>("not_started");
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
   const [taskSaving, setTaskSaving] = useState(false);
@@ -315,6 +324,10 @@ export default function ProjectList({
                           setNotesTask(t);
                           setNotesStartDate(t.startDate || t.dueDate);
                           setNotesDueDate(t.dueDate);
+                          setNotesEditTitle(t.title);
+                          setNotesEditNotes(t.notes || "");
+                          setNotesEditAssignedTo(t.assignedTo || "");
+                          setNotesEditStatus(t.status);
                           setNotesError(null);
                         }}
                         className="w-full break-words rounded px-1 py-0.5 text-left text-sm font-medium leading-snug text-zinc-900 hover:bg-zinc-100"
@@ -765,9 +778,6 @@ export default function ProjectList({
           <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
-                <h3 id="sidebar-task-notes-title" className="text-lg font-semibold text-zinc-900">
-                  {notesTask.title}
-                </h3>
                 <p className="text-sm text-zinc-600">
                   {projects.find((p) => p.id === notesTask.projectId)?.name ?? "Project"}
                 </p>
@@ -780,16 +790,14 @@ export default function ProjectList({
                 ✕
               </button>
             </div>
-            <div className="rounded-md border border-zinc-100 bg-zinc-50 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Notes</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">
-                {notesTask.notes?.trim() ? notesTask.notes : "No notes for this task."}
-              </p>
-            </div>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!notesTask) return;
+                if (!notesEditTitle.trim()) {
+                  setNotesError("Title is required.");
+                  return;
+                }
                 if (!notesStartDate || !notesDueDate) {
                   setNotesError("Start and due dates are required.");
                   return;
@@ -800,14 +808,25 @@ export default function ProjectList({
                 }
                 setNotesError(null);
                 setNotesSaving(true);
-                void onUpdateTaskDates(notesTask.id, notesStartDate, notesDueDate)
+                void onUpdateTask(notesTask.id, {
+                  title: notesEditTitle.trim(),
+                  startDate: notesStartDate,
+                  dueDate: notesDueDate,
+                  notes: notesEditNotes,
+                  assignedTo: notesEditAssignedTo,
+                  status: notesEditStatus,
+                })
                   .then(() => {
                     setNotesTask((prev) => {
                       if (!prev || prev.id !== notesTask.id) return prev;
                       return {
                         ...prev,
+                        title: notesEditTitle.trim(),
                         startDate: notesStartDate,
                         dueDate: notesDueDate,
+                        notes: notesEditNotes,
+                        assignedTo: notesEditAssignedTo,
+                        status: notesEditStatus,
                       };
                     });
                   })
@@ -816,14 +835,23 @@ export default function ProjectList({
                       err && typeof err === "object" && "message" in err
                         ? String((err as { message?: string }).message)
                         : "";
-                    setNotesError(message || "Could not update task dates.");
+                    setNotesError(message || "Could not update task.");
                     console.error(err);
                   })
                   .finally(() => setNotesSaving(false));
               }}
-              className="mt-3 space-y-2 rounded-md border border-zinc-200 p-3"
+              className="space-y-3"
             >
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Timeline</p>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-700">Title</label>
+                <input
+                  type="text"
+                  value={notesEditTitle}
+                  onChange={(e) => setNotesEditTitle(e.target.value)}
+                  required
+                  className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-zinc-700">Start</label>
@@ -846,19 +874,57 @@ export default function ProjectList({
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">Assigned To</label>
+                  <select
+                    value={notesEditAssignedTo}
+                    onChange={(e) => setNotesEditAssignedTo(e.target.value as AssignedTo)}
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  >
+                    {ASSIGNED_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label || "(none)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">Status</label>
+                  <select
+                    value={notesEditStatus}
+                    onChange={(e) => setNotesEditStatus(e.target.value as ProjectTask["status"])}
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  >
+                    <option value="not_started">Not Started</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="complete">Complete</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-700">Notes</label>
+                <textarea
+                  value={notesEditNotes}
+                  onChange={(e) => setNotesEditNotes(e.target.value)}
+                  rows={3}
+                  className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
+                  placeholder="Optional notes"
+                />
+              </div>
               {notesError && <p className="text-xs text-red-600">{notesError}</p>}
               <button
                 type="submit"
                 disabled={notesSaving}
                 className="w-full rounded bg-blue-600 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
               >
-                {notesSaving ? "Saving..." : "Save Task Dates"}
+                {notesSaving ? "Saving..." : "Save Changes"}
               </button>
             </form>
             <button
               type="button"
               onClick={() => setNotesTask(null)}
-              className="mt-4 w-full rounded-lg bg-zinc-900 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="mt-2 w-full rounded-lg bg-zinc-900 py-2 text-sm font-medium text-white hover:bg-zinc-800"
             >
               Close
             </button>

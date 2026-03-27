@@ -250,6 +250,56 @@ export async function updateTaskDates(
   }
 }
 
+export async function updateTask(
+  taskId: string,
+  fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
+  actor?: { userId: string; userEmail: string },
+) {
+  const db = getFirestoreDb();
+  const taskRef = doc(db, "tasks", taskId);
+
+  let beforeData: Record<string, unknown> | null = null;
+  let taskTitle = "task";
+  let projectName: string | undefined;
+  if (actor) {
+    const snap = await getDoc(taskRef);
+    if (snap.exists()) {
+      const d = snap.data();
+      beforeData = {
+        title: d.title,
+        startDate: d.startDate,
+        dueDate: d.dueDate,
+        notes: d.notes,
+        assignedTo: d.assignedTo,
+        status: d.status,
+      };
+      taskTitle = d.title ?? "task";
+      const projSnap = await getDoc(doc(db, "projects", d.projectId ?? ""));
+      projectName = projSnap.exists() ? (projSnap.data().name as string) : undefined;
+    }
+  }
+
+  const patch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) patch[key] = value;
+  }
+  await updateDoc(taskRef, patch);
+
+  if (actor) {
+    await logChange({
+      userId: actor.userId,
+      userEmail: actor.userEmail,
+      action: "update_task",
+      entityType: "task",
+      entityId: taskId,
+      projectName,
+      description: `Updated "${taskTitle}"`,
+      before: beforeData,
+      after: { ...fields },
+    });
+  }
+}
+
 const FIRESTORE_BATCH_LIMIT = 500;
 
 /**

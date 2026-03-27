@@ -16,9 +16,10 @@ import {
   subscribeToAllTasks,
   subscribeToChangelog,
   updateProject,
+  updateTask,
   updateTaskDates,
 } from "@/lib/db";
-import type { BulkImportCsvRow, ChangelogEntry, Project, ProjectInput, ProjectTask } from "@/types/scheduler";
+import type { BulkImportCsvRow, ChangelogEntry, Project, ProjectInput, ProjectTask, AssignedTo } from "@/types/scheduler";
 
 export default function Home() {
   const APP_VERSION = "frozen-col-v7";
@@ -152,6 +153,13 @@ export default function Home() {
 
   async function handleUpdateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
     await updateTaskDates(taskId, startDate, dueDate, actor);
+  }
+
+  async function handleUpdateTask(
+    taskId: string,
+    fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
+  ) {
+    await updateTask(taskId, fields, actor);
   }
 
   async function handleRevertChange(entry: ChangelogEntry) {
@@ -340,6 +348,7 @@ export default function Home() {
               onUpdateProject={handleUpdateProject}
               onAddTask={handleAddTaskForProject}
               onUpdateTaskDates={handleUpdateTaskDates}
+              onUpdateTask={handleUpdateTask}
               onBulkUpload={handleBulkUpload}
             />
           </div>
@@ -382,6 +391,7 @@ export default function Home() {
               projects={projects}
               tasks={allTasks}
               onUpdateTaskDates={handleUpdateTaskDates}
+              onUpdateTask={handleUpdateTask}
             />
           )}
         </section>
