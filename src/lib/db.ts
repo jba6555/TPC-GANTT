@@ -166,6 +166,7 @@ export function subscribeToTasks(
             sortOrder: data.sortOrder ?? 0,
             notes: data.notes,
             assignedTo: data.assignedTo,
+            googleCalendarEventId: data.googleCalendarEventId,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
           } as ProjectTask;
         })
@@ -201,6 +202,7 @@ export function subscribeToAllTasks(
             sortOrder: data.sortOrder ?? 0,
             notes: data.notes,
             assignedTo: data.assignedTo,
+            googleCalendarEventId: data.googleCalendarEventId,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
           } as ProjectTask;
         })
@@ -261,6 +263,7 @@ export async function createTask(
       after: { id: docRef.id, projectId, ...input, sortOrder },
     });
   }
+  return docRef.id;
 }
 
 export async function updateTaskDates(

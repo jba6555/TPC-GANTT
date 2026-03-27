@@ -45,6 +45,8 @@ export interface ProjectTask {
   sortOrder: number;
   notes?: string;
   assignedTo?: AssignedTo;
+  /** Google Calendar event id when synced to the shared org calendar. */
+  googleCalendarEventId?: string;
   updatedAt: string;
 }
 
