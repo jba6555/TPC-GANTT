@@ -167,10 +167,9 @@ export default function GanttScheduler({ projects, tasks, onUpdateTaskDates }: G
         const weekEnd = d.add(6, "day");
         const eff = weekEnd.isAfter(ce) ? ce : weekEnd;
         const n = eff.diff(d, "day") + 1;
-        const showLabel = d.date() <= 7;
         cols.push({
           key: d.format("YYYY-[W]ww"),
-          label: showLabel ? d.format("D") : "",
+          label: "",
           widthPx: n * ppd,
           monthKey: d.format("YYYY-MM"),
           monthLabel: d.format("MMM"),
