@@ -82,11 +82,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [taskDueDate, setTaskDueDate] = useState("");
   const [taskNotes, setTaskNotes] = useState("");
   const [taskAssignedTo, setTaskAssignedTo] = useState<AssignedTo>("");
-  const [taskSaving, setTaskSaving] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
-  const [projectSaving, setProjectSaving] = useState(false);
   const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
   const hasScrolledToToday = useRef(false);
   const scrollFractionRef = useRef<number | null>(null);
@@ -482,7 +480,6 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         onClick={() => {
                           setTaskModalProjectId(project.id);
                           setTaskError(null);
-                          setTaskSaving(false);
                           setTaskTitle("");
                           setTaskStartDate("");
                           setTaskDueDate("");
@@ -730,30 +727,26 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 const trimmed = newProjectName.trim();
                 if (!trimmed) return;
                 setProjectSaveError(null);
-                setProjectSaving(true);
-                void onAddProject({ name: trimmed, address: "" })
-                  .then(() => {
-                    setProjectModalOpen(false);
-                    setNewProjectName("");
-                    setProjectSaveError(null);
-                  })
-                  .catch((err: unknown) => {
-                    const code =
-                      err && typeof err === "object" && "code" in err
-                        ? String((err as { code?: string }).code)
-                        : "";
-                    const message =
-                      err && typeof err === "object" && "message" in err
-                        ? String((err as { message?: string }).message)
-                        : "";
-                    setProjectSaveError(
-                      code === "permission-denied"
-                        ? "Firestore blocked the save. Check Firestore rules and that you are signed in."
-                        : message || "Could not save project.",
-                    );
-                    console.error(err);
-                  })
-                  .finally(() => setProjectSaving(false));
+                setProjectModalOpen(false);
+                setNewProjectName("");
+                void onAddProject({ name: trimmed, address: "" }).catch((err: unknown) => {
+                  const code =
+                    err && typeof err === "object" && "code" in err
+                      ? String((err as { code?: string }).code)
+                      : "";
+                  const message =
+                    err && typeof err === "object" && "message" in err
+                      ? String((err as { message?: string }).message)
+                      : "";
+                  setProjectSaveError(
+                    code === "permission-denied"
+                      ? "Firestore blocked the save. Check Firestore rules and that you are signed in."
+                      : message || "Could not save project.",
+                  );
+                  setNewProjectName(trimmed);
+                  setProjectModalOpen(true);
+                  console.error(err);
+                });
               }}
               className="space-y-3"
             >
@@ -771,10 +764,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
               {projectSaveError && <p className="text-xs text-red-600">{projectSaveError}</p>}
               <button
                 type="submit"
-                disabled={projectSaving}
-                className="w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className="w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white"
               >
-                {projectSaving ? "Saving…" : "Create project"}
+                Create project
               </button>
             </form>
           </div>
@@ -821,33 +813,30 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!taskTitle.trim() || !onAddTask) return;
-                setTaskError(null);
-                setTaskSaving(true);
-                void onAddTask(taskModalProjectId, {
+                const projectId = taskModalProjectId;
+                if (!projectId) return;
+                const payload = {
                   title: taskTitle.trim(),
                   startDate: taskStartDate || undefined,
                   dueDate: taskDueDate || undefined,
                   notes: taskNotes.trim() || undefined,
                   assignedTo: taskAssignedTo || undefined,
-                })
-                  .then(() => {
-                    setTaskModalProjectId(null);
-                    setTaskTitle("");
-                    setTaskStartDate("");
-                    setTaskDueDate("");
-                    setTaskNotes("");
-                    setTaskAssignedTo("");
-                    setTaskError(null);
-                  })
-                  .catch((err: unknown) => {
-                    const message =
-                      err && typeof err === "object" && "message" in err
-                        ? String((err as { message?: string }).message)
-                        : "";
-                    setTaskError(message || "Could not add task.");
-                    console.error(err);
-                  })
-                  .finally(() => setTaskSaving(false));
+                };
+                setTaskError(null);
+                setTaskModalProjectId(null);
+                setTaskTitle("");
+                setTaskStartDate("");
+                setTaskDueDate("");
+                setTaskNotes("");
+                setTaskAssignedTo("");
+                void onAddTask(projectId, payload).catch((err: unknown) => {
+                  const message =
+                    err && typeof err === "object" && "message" in err
+                      ? String((err as { message?: string }).message)
+                      : "";
+                  window.alert(message || "Could not add task.");
+                  console.error(err);
+                });
               }}
               className="space-y-3"
             >
@@ -922,21 +911,19 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  disabled={taskSaving}
-                  className="flex-1 rounded bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className="flex-1 rounded bg-zinc-900 py-2 text-sm font-medium text-white"
                 >
-                  {taskSaving ? "Adding..." : "Add Task"}
+                  Add Task
                 </button>
                 <button
                   type="button"
-                  disabled={taskSaving}
                   onClick={() => {
                     setTaskModalProjectId(null);
                     setTaskError(null);
                     setTaskNotes("");
                     setTaskAssignedTo("");
                   }}
-                  className="rounded bg-zinc-100 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-60"
+                  className="rounded bg-zinc-100 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
                 >
                   Cancel
                 </button>
