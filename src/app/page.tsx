@@ -44,6 +44,7 @@ export default function Home() {
   const [allowedUsersLoadError, setAllowedUsersLoadError] = useState(false);
   const [assignedOptions, setAssignedOptions] = useState<AssignedOption[]>(DEFAULT_ASSIGNED_OPTIONS);
   const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
+  const [changelogError, setChangelogError] = useState<string | null>(null);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
   const [appTitle, setAppTitle] = useState(DEFAULT_TITLE);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -105,8 +106,21 @@ export default function Home() {
   }, [authReady, userId]);
 
   useEffect(() => {
-    if (!authReady || !userId) return;
-    const unsubscribe = subscribeToChangelog(setChangelog);
+    if (!authReady || !userId) {
+      setChangelogError(null);
+      return;
+    }
+    const unsubscribe = subscribeToChangelog(
+      (entries) => {
+        setChangelog(entries);
+        setChangelogError(null);
+      },
+      {
+        onError: (e) => {
+          setChangelogError(e.message);
+        },
+      },
+    );
     return () => unsubscribe();
   }, [authReady, userId]);
 
@@ -399,7 +413,7 @@ export default function Home() {
               <h2 className="text-lg font-semibold text-zinc-900">No projects yet</h2>
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm text-zinc-500">
-                  Create a project with <span className="font-medium text-zinc-700">+ Project</span> in the chart below, or seed an example.
+                  Create a project with <span className="font-medium text-zinc-700">+ Project</span> above the timeline, or seed an example.
                 </p>
                 <button
                   type="button"
