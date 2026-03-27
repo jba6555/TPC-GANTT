@@ -394,10 +394,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const HEADER_ROW_H = Math.round(28 * ROW_SCALE);
   const PROJECT_ROW_H = Math.round(44 * ROW_SCALE);
   const TASK_ROW_H = Math.round(48 * ROW_SCALE);
-  /** Gap above/below the bar inside the task row (row height stays the same; bar is inset). */
-  const TASK_BAR_V_INSET = Math.max(4, Math.round(TASK_ROW_H * 0.18));
-  const TASK_BAR_H = Math.max(10, TASK_ROW_H - 2 * TASK_BAR_V_INSET);
-  const taskBarTop = Math.max(0, Math.floor((TASK_ROW_H - TASK_BAR_H) / 2));
+  /** Bar height as a fraction of row — keeps bars visibly thinner than the row; min 8px for readability. */
+  const TASK_BAR_H = Math.max(8, Math.min(Math.round(TASK_ROW_H * 0.34), TASK_ROW_H - 6));
+  const barLabelFontPx = Math.min(10, Math.max(8, TASK_BAR_H - 2));
   const timelineWidth = columns.reduce((sum, c) => sum + c.widthPx, 0);
   const MIN_BAR_WIDTH = 6;
   const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
@@ -649,7 +648,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                 style={{
                                   left,
                                   width: barWidth,
-                                  top: taskBarTop,
+                                  top: "50%",
+                                  transform: "translateY(-50%)",
                                   height: TASK_BAR_H,
                                   cursor: "grab",
                                   backgroundColor: barColor,
@@ -673,7 +673,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                   {rangeFits && (
                                     <span
                                       className="sticky left-0 inline-block whitespace-nowrap px-1.5"
-                                      style={{ fontSize: 10, lineHeight: `${TASK_BAR_H}px` }}
+                                      style={{ fontSize: barLabelFontPx, lineHeight: `${TASK_BAR_H}px` }}
                                     >
                                       {dateRangeText}
                                     </span>
@@ -690,8 +690,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                   className="pointer-events-none absolute whitespace-nowrap text-zinc-700"
                                   style={{
                                     left: left + barWidth + 4,
-                                    top: taskBarTop,
-                                    fontSize: 10,
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    fontSize: barLabelFontPx,
                                     lineHeight: `${TASK_BAR_H}px`,
                                   }}
                                 >
