@@ -58,6 +58,11 @@ interface SpanHeader {
 
 const ZOOM_KEYS: ZoomLevel[] = ZOOM_LEVELS.map((z) => z.key);
 
+/** Rough label width for proportional UI text; used to place date labels beside the bar when the bar is too narrow. */
+function approximateLabelWidthPx(text: string, fontSizePx: number): number {
+  return text.length * fontSizePx * 0.52;
+}
+
 export default function GanttScheduler({ projects, tasks, assignedOptions, onAddProject, onDeleteProject, onUpdateTaskDates, onUpdateTask, onDeleteTask, onAddTask }: GanttSchedulerProps) {
   const options = assignedOptions ?? ASSIGNED_OPTIONS;
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
@@ -397,6 +402,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const barLabelFontPx = Math.min(11, Math.max(9, Math.round(TASK_BAR_H * 0.72)));
   const timelineWidth = columns.reduce((sum, c) => sum + c.widthPx, 0);
   const MIN_BAR_WIDTH = 6;
+  /** Resize handles (w-2) + inner horizontal padding (px-1.5) — space available for in-bar date text. */
+  const BAR_DATE_INSET_PX = 8 + 8 + 6 + 6;
   const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
 
   return (
@@ -636,6 +643,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           const dateRangeText = start.isSame(due, "day")
                             ? start.format("MM/DD/YY")
                             : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`;
+                          const innerTextMaxPx = Math.max(0, barWidth - BAR_DATE_INSET_PX);
+                          const dateFitsInBar =
+                            innerTextMaxPx >= approximateLabelWidthPx(dateRangeText, barLabelFontPx) + 2;
                           return (
                             <>
                               <div
@@ -666,13 +676,15 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                   onPointerDown={(e) => handlePointerDown(e, task, "move")}
                                   className="relative h-full min-w-0 flex-1 cursor-grab overflow-hidden"
                                 >
-                                  <span
-                                    className="block truncate px-1.5 text-left"
-                                    title={dateRangeText}
-                                    style={{ fontSize: barLabelFontPx, lineHeight: `${TASK_BAR_H}px` }}
-                                  >
-                                    {dateRangeText}
-                                  </span>
+                                  {dateFitsInBar ? (
+                                    <span
+                                      className="block truncate px-1.5 text-left"
+                                      title={dateRangeText}
+                                      style={{ fontSize: barLabelFontPx, lineHeight: `${TASK_BAR_H}px` }}
+                                    >
+                                      {dateRangeText}
+                                    </span>
+                                  ) : null}
                                 </div>
                                 <div
                                   onPointerDown={(e) => handlePointerDown(e, task, "resizeEnd")}
@@ -680,6 +692,21 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                   style={{ backgroundColor: "rgba(0,0,0,0.15)" }}
                                 />
                               </div>
+                              {!dateFitsInBar ? (
+                                <span
+                                  className="pointer-events-none absolute z-[5] whitespace-nowrap text-zinc-700"
+                                  title={dateRangeText}
+                                  style={{
+                                    left: left + barWidth + 6,
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    fontSize: barLabelFontPx,
+                                    lineHeight: `${TASK_BAR_H}px`,
+                                  }}
+                                >
+                                  {dateRangeText}
+                                </span>
+                              ) : null}
                             </>
                           );
                         })()}
