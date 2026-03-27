@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  type CollectionReference,
   type DocumentData,
   doc,
   deleteDoc,
@@ -653,10 +654,25 @@ function mapChangelogSnapshotDocs(
   return rows.slice(0, maxEntries).map((r) => r.entry);
 }
 
-/** One-shot read from the server (bypasses stale empty local cache for the changelog collection). */
+/**
+ * Prefer a server read so an empty IndexedDB cache does not hide remote data.
+ * Falls back to `getDocs` when the server is unreachable (offline, flaky network) — same as Firebase’s hint.
+ */
+async function getChangelogSnapshotPreferServer(
+  changelogCollection: CollectionReference<DocumentData>,
+) {
+  try {
+    return await getDocsFromServer(changelogCollection);
+  } catch (e) {
+    console.warn("[Changelog] getDocsFromServer failed, using cache/default read:", e);
+    return await getDocs(changelogCollection);
+  }
+}
+
+/** Load changelog entries; prefers server, falls back to cache when server read fails. */
 export async function fetchChangelogFromServer(maxEntries = 200): Promise<ChangelogEntry[]> {
   const changelogCollection = changelogCollectionRef();
-  const snapshot = await getDocsFromServer(changelogCollection);
+  const snapshot = await getChangelogSnapshotPreferServer(changelogCollection);
   return mapChangelogSnapshotDocs(snapshot, maxEntries);
 }
 
@@ -678,12 +694,12 @@ export function subscribeToChangelog(
 
       // IndexedDB cache can deliver an empty snapshot before the server sync; if so, read from server once.
       if (snapshot.metadata.fromCache && snapshot.docs.length === 0) {
-        void getDocsFromServer(changelogCollection)
-          .then((serverSnap) => {
-            push(serverSnap);
+        void getChangelogSnapshotPreferServer(changelogCollection)
+          .then((snap) => {
+            push(snap);
           })
           .catch((err) => {
-            console.error("[Firestore] changelog server read:", err);
+            console.error("[Firestore] changelog read:", err);
             onError?.(err instanceof Error ? err : new Error(String(err)));
           });
         return;
