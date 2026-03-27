@@ -14,6 +14,7 @@ interface GanttSchedulerProps {
     taskId: string,
     fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
   ) => Promise<void>;
+  onAddTask?: (projectId: string, input: { title: string; startDate?: string; dueDate?: string }) => Promise<void>;
 }
 
 type DragMode = "move" | "resizeStart" | "resizeEnd";
@@ -48,7 +49,7 @@ interface SpanHeader {
 
 const ZOOM_KEYS: ZoomLevel[] = ZOOM_LEVELS.map((z) => z.key);
 
-export default function GanttScheduler({ projects, tasks, assignedOptions, onUpdateTaskDates, onUpdateTask }: GanttSchedulerProps) {
+export default function GanttScheduler({ projects, tasks, assignedOptions, onUpdateTaskDates, onUpdateTask, onAddTask }: GanttSchedulerProps) {
   const options = assignedOptions ?? ASSIGNED_OPTIONS;
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -66,6 +67,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
   const dragOccurredRef = useRef(false);
   const [zoom, setZoom] = useState<ZoomLevel>("week");
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
+  const [addingTaskProjectId, setAddingTaskProjectId] = useState<string | null>(null);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [addingTaskSaving, setAddingTaskSaving] = useState(false);
+  const newTaskInputRef = useRef<HTMLInputElement | null>(null);
   const hasScrolledToToday = useRef(false);
   const scrollFractionRef = useRef<number | null>(null);
   const scrollToTodayRef = useRef(false);
@@ -421,16 +426,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
             const isCollapsed = collapsedProjects.has(project.id);
             return (
               <div key={project.id}>
-                <div className="flex items-center overflow-hidden border-b border-zinc-200 bg-zinc-50 px-1" style={{ height: PROJECT_ROW_H }}>
-                  <button
-                    type="button"
-                    onClick={() => toggleProjectCollapse(project.id)}
-                    className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-sm text-zinc-600 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
-                    title={isCollapsed ? "Show tasks" : "Hide tasks"}
-                  >
-                    {isCollapsed ? "\u25B6" : "\u25BC"}
-                  </button>
-                  <div className="min-w-0">
+                <div className="flex items-center overflow-hidden border-b border-zinc-200 bg-zinc-50 px-2" style={{ height: PROJECT_ROW_H }}>
+                  <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-zinc-900">{project.name}</p>
                     {project.address ? (
                       <p className="truncate text-xs text-zinc-500">{project.address}</p>
@@ -438,7 +435,82 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
                       <p className="truncate text-xs text-zinc-400">No address</p>
                     )}
                   </div>
+                  <div className="ml-1 flex shrink-0 items-center gap-0.5">
+                    {onAddTask && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddingTaskProjectId(project.id);
+                          setNewTaskTitle("");
+                          if (collapsedProjects.has(project.id)) {
+                            toggleProjectCollapse(project.id);
+                          }
+                          setTimeout(() => newTaskInputRef.current?.focus(), 50);
+                        }}
+                        className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
+                        title="Add task"
+                      >
+                        +
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleProjectCollapse(project.id)}
+                      className="flex h-6 w-6 items-center justify-center rounded text-xs text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
+                      title={isCollapsed ? "Show tasks" : "Hide tasks"}
+                    >
+                      {isCollapsed ? "\u25B6" : "\u25BC"}
+                    </button>
+                  </div>
                 </div>
+                {addingTaskProjectId === project.id && (
+                  <form
+                    className="flex items-center gap-1 border-b border-zinc-200 bg-blue-50 px-2 py-1.5"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!newTaskTitle.trim() || !onAddTask) return;
+                      setAddingTaskSaving(true);
+                      const today = dayjs().format("YYYY-MM-DD");
+                      onAddTask(project.id, { title: newTaskTitle.trim(), startDate: today, dueDate: today })
+                        .then(() => {
+                          setAddingTaskProjectId(null);
+                          setNewTaskTitle("");
+                        })
+                        .catch((err) => console.error(err))
+                        .finally(() => setAddingTaskSaving(false));
+                    }}
+                  >
+                    <input
+                      ref={newTaskInputRef}
+                      type="text"
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      placeholder="Task title..."
+                      className="min-w-0 flex-1 rounded border border-zinc-300 px-2 py-1 text-xs focus:border-blue-400 focus:outline-none"
+                      disabled={addingTaskSaving}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setAddingTaskProjectId(null);
+                          setNewTaskTitle("");
+                        }
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={addingTaskSaving || !newTaskTitle.trim()}
+                      className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {addingTaskSaving ? "..." : "Add"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAddingTaskProjectId(null); setNewTaskTitle(""); }}
+                      className="rounded px-1.5 py-1 text-xs text-zinc-500 hover:bg-zinc-200"
+                    >
+                      ✕
+                    </button>
+                  </form>
+                )}
                 {!isCollapsed && projectTasks.map((task) => {
                   const start = dayjs(task.startDate || task.dueDate);
                   const due = dayjs(task.dueDate);
@@ -537,6 +609,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onUpd
               return (
                 <div key={project.id}>
                   <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: PROJECT_ROW_H }} />
+                  {addingTaskProjectId === project.id && (
+                    <div className="border-b border-zinc-200 bg-blue-50" style={{ height: 36 }} />
+                  )}
                   {!isCollapsed && projectTasks.map((task) => {
                     const start = dayjs(task.startDate || task.dueDate);
                     const due = dayjs(task.dueDate);

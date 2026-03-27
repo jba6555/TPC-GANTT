@@ -420,6 +420,7 @@ export default function Home() {
               assignedOptions={assignedOptions}
               onUpdateTaskDates={handleUpdateTaskDates}
               onUpdateTask={handleUpdateTask}
+              onAddTask={handleAddTaskForProject}
             />
           )}
         </section>
