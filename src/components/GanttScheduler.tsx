@@ -386,7 +386,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   }, []);
 
   const LABEL_WIDTH = 200;
-  const HEADER_ROW_H = 24;
+  /** Tall enough for primary buttons (e.g. + Project) in the label column without clipping. */
+  const HEADER_ROW_H = 28;
   const PROJECT_ROW_H = 44;
   const TASK_ROW_H = 48;
   const timelineWidth = columns.reduce((sum, c) => sum + c.widthPx, 0);
@@ -446,7 +447,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 setNewProjectName("");
                 setProjectModalOpen(true);
               }}
-              className="rounded px-1.5 py-0.5 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
+              className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
             >
               + Project
             </button>
