@@ -476,7 +476,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                     {isCollapsed ? "\u25B6" : "\u25BC"}
                   </button>
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900">{project.name}</span>
-                  <div className="ml-0.5 flex shrink-0 items-center gap-1">
+                  <div className="ml-0.5 flex shrink-0 items-center gap-0.5">
                     {onAddTask && (
                       <button
                         type="button"
@@ -490,7 +490,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           setTaskNotes("");
                           setTaskAssignedTo("");
                         }}
-                        className="flex h-5 w-5 items-center justify-center rounded-full bg-green-600 text-xs font-bold leading-none text-white shadow-sm transition-colors hover:bg-green-700"
+                        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-emerald-600/25 bg-emerald-600/[0.08] text-[10px] font-semibold leading-none text-emerald-800 transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/[0.14] active:bg-emerald-600/[0.2]"
                         title="Add task"
                       >
                         +
@@ -512,10 +512,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           );
                         });
                       }}
-                      className="flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-sm font-bold leading-none text-white shadow-sm transition-colors hover:bg-red-700"
+                      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-rose-500/25 bg-rose-500/[0.07] text-[10px] font-semibold leading-none text-rose-800 transition-colors hover:border-rose-500/40 hover:bg-rose-500/[0.13] active:bg-rose-500/[0.18]"
                       title="Delete project"
                     >
-                      -
+                      −
                     </button>
                   </div>
                 </div>
