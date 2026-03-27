@@ -524,10 +524,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         type="button"
                         title="View notes"
                         onClick={() => openTaskEditor(task)}
-                        className="flex w-full cursor-pointer items-center overflow-hidden border-b border-zinc-100 bg-white px-2 text-left transition-colors hover:bg-zinc-50"
+                        className="flex w-full cursor-pointer items-center justify-end overflow-hidden border-b border-zinc-100 bg-white px-2 text-right transition-colors hover:bg-zinc-50"
                         style={{ height: TASK_ROW_H }}
                       >
-                        <div className="min-w-0 flex-1">
+                        <div className="min-w-0 w-full text-right">
                           <p className="truncate text-[13px] font-medium text-zinc-900">{task.title}</p>
                           <p className="text-[10px] text-zinc-400">
                             {start.isSame(due, "day")
