@@ -389,10 +389,13 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
 
   /** Fixed label column: keeps project controls aligned with timeline rows. */
   const LABEL_WIDTH = 220;
-  /** Tall enough for header rows (aligned across timeline). */
-  const HEADER_ROW_H = 28;
-  const PROJECT_ROW_H = 44;
-  const TASK_ROW_H = 48;
+  /** Row heights scaled ~30% shorter than original (0.7×). */
+  const ROW_SCALE = 0.7;
+  const HEADER_ROW_H = Math.round(28 * ROW_SCALE);
+  const PROJECT_ROW_H = Math.round(44 * ROW_SCALE);
+  const TASK_ROW_H = Math.round(48 * ROW_SCALE);
+  const TASK_BAR_H = Math.round(32 * ROW_SCALE);
+  const taskBarTop = Math.max(0, Math.floor((TASK_ROW_H - TASK_BAR_H) / 2));
   const timelineWidth = columns.reduce((sum, c) => sum + c.widthPx, 0);
   const MIN_BAR_WIDTH = 6;
   const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
@@ -528,8 +531,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         style={{ height: TASK_ROW_H }}
                       >
                         <div className="min-w-0 w-full text-right">
-                          <p className="truncate text-[13px] font-medium text-zinc-900">{task.title}</p>
-                          <p className="text-[10px] text-zinc-400">
+                          <p className="truncate text-[11px] font-medium leading-tight text-zinc-900">{task.title}</p>
+                          <p className="text-[9px] leading-tight text-zinc-400">
                             {start.isSame(due, "day")
                               ? start.format("MM/DD/YY")
                               : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`}
@@ -644,8 +647,16 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                             <>
                               <div
                                 data-task-id={task.id}
-                                className={`absolute top-2 flex h-8 items-center rounded ${pending === task.id ? "opacity-60" : ""}`}
-                                style={{ left, width: barWidth, cursor: "grab", backgroundColor: barColor, color: barTextColor }}
+                                className={`absolute flex items-center rounded ${pending === task.id ? "opacity-60" : ""}`}
+                                style={{
+                                  left,
+                                  width: barWidth,
+                                  top: taskBarTop,
+                                  height: TASK_BAR_H,
+                                  cursor: "grab",
+                                  backgroundColor: barColor,
+                                  color: barTextColor,
+                                }}
                                 onClick={() => {
                                   if (!dragOccurredRef.current) {
                                     openTaskEditor(task);
@@ -663,8 +674,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                 >
                                   {labelFits && (
                                     <span
-                                      className="sticky left-0 inline-block whitespace-nowrap px-2 leading-8"
-                                      style={{ fontSize: 13 }}
+                                      className="sticky left-0 inline-block whitespace-nowrap px-2"
+                                      style={{ fontSize: 12, lineHeight: `${TASK_BAR_H}px` }}
                                     >
                                       {task.title}
                                     </span>
@@ -678,8 +689,13 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                               </div>
                               {!labelFits && (
                                 <span
-                                  className="pointer-events-none absolute top-2 whitespace-nowrap leading-8 text-zinc-700"
-                                  style={{ left: left + barWidth + 4, fontSize: 12 }}
+                                  className="pointer-events-none absolute whitespace-nowrap text-zinc-700"
+                                  style={{
+                                    left: left + barWidth + 4,
+                                    top: taskBarTop,
+                                    fontSize: 12,
+                                    lineHeight: `${TASK_BAR_H}px`,
+                                  }}
                                 >
                                   {task.title}
                                 </span>
