@@ -307,7 +307,8 @@ export default function Home() {
     const t = allTasks.find((x) => x.id === taskId);
     if (!t) return;
     const projectName = projects.find((p) => p.id === t.projectId)?.name ?? "";
-    await syncTaskToGoogleCalendar({
+    // Calendar sync is best-effort; do not fail the timeline update if it errors.
+    void syncTaskToGoogleCalendar({
       taskId,
       projectName,
       task: {
@@ -327,7 +328,8 @@ export default function Home() {
     if (!t) return;
     const merged: ProjectTask = { ...t, ...fields };
     const projectName = projects.find((p) => p.id === merged.projectId)?.name ?? "";
-    await syncTaskToGoogleCalendar({
+    // Calendar sync is best-effort; do not fail the edit save if it errors.
+    void syncTaskToGoogleCalendar({
       taskId,
       projectName,
       task: {

@@ -67,6 +67,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const options = assignedOptions ?? ASSIGNED_OPTIONS;
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+  const [timelineSaveError, setTimelineSaveError] = useState<string | null>(null);
   const [notesTask, setNotesTask] = useState<ProjectTask | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editStartDate, setEditStartDate] = useState("");
@@ -338,9 +339,11 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
       const nextStartStr = nextStart.format("YYYY-MM-DD");
       const nextDueStr = nextDue.format("YYYY-MM-DD");
       setPending(task.id);
+      setTimelineSaveError(null);
       void onUpdateTaskDates(task.id, nextStartStr, nextDueStr)
         .catch((e) => {
-          console.error(e);
+          const msg = e instanceof Error ? e.message : String(e);
+          setTimelineSaveError(msg);
         })
         .finally(() => setPending(null));
     };
@@ -422,6 +425,12 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
 
   return (
     <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-3">
+      {timelineSaveError && (
+        <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+          <p className="font-medium">Timeline update failed</p>
+          <p className="mt-1 break-words opacity-90">{timelineSaveError}</p>
+        </div>
+      )}
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
