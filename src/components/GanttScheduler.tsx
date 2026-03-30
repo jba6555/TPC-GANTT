@@ -375,7 +375,21 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
       map.set(task.projectId, arr);
     }
     for (const [key, arr] of map.entries()) {
-      arr.sort((a, b) => a.sortOrder - b.sortOrder);
+      arr.sort((a, b) => {
+        // Nearest → farthest by scheduled date.
+        // Prefer startDate when present; otherwise fall back to dueDate.
+        const aStart = a.startDate || a.dueDate;
+        const bStart = b.startDate || b.dueDate;
+        if (aStart !== bStart) return aStart < bStart ? -1 : 1;
+
+        // Tie-break by due date (milestones/tasks with same start).
+        if (a.dueDate !== b.dueDate) return a.dueDate < b.dueDate ? -1 : 1;
+
+        // Keep a stable-ish ordering within the same date bucket.
+        if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+        if (a.title !== b.title) return a.title.localeCompare(b.title);
+        return a.id.localeCompare(b.id);
+      });
       map.set(key, arr);
     }
     return map;
