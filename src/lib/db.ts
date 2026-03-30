@@ -686,6 +686,23 @@ export async function fetchChangelogFromServer(maxEntries = 200): Promise<Change
   return mapChangelogSnapshotDocs(snapshot, maxEntries);
 }
 
+/** Debug helper: attempt to write a changelog entry from the client. */
+export async function writeTestChangelogEntry(actor: { userId: string; userEmail: string }) {
+  const payload: Record<string, unknown> = {
+    userId: actor.userId,
+    userEmail: actor.userEmail,
+    action: "update_task",
+    entityType: "task",
+    entityId: "test",
+    projectName: "Test",
+    description: "Test history write",
+    before: null,
+    after: { ok: true },
+    timestamp: serverTimestamp(),
+  };
+  await addDoc(changelogCollectionRef(), payload);
+}
+
 export function subscribeToChangelog(
   callback: (entries: ChangelogEntry[]) => void,
   options?: SubscribeToChangelogOptions,

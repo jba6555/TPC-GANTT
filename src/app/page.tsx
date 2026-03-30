@@ -27,6 +27,7 @@ import {
   subscribeToAllowedUsers,
   updateTask,
   updateTaskDates,
+  writeTestChangelogEntry,
 } from "@/lib/db";
 import type {
   AssignedOption,
@@ -58,6 +59,7 @@ export default function Home() {
   const [changelogError, setChangelogError] = useState<string | null>(null);
   /** Set when Firestore rejects a changelog write (timeline still updates). */
   const [changelogWriteWarning, setChangelogWriteWarning] = useState<string | null>(null);
+  const [historyTestStatus, setHistoryTestStatus] = useState<string | null>(null);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
   const [appTitle, setAppTitle] = useState(DEFAULT_TITLE);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -755,6 +757,33 @@ export default function Home() {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryTestStatus("Testing...");
+                  void (async () => {
+                    try {
+                      await writeTestChangelogEntry(actor);
+                      const entries = await fetchChangelogFromServer();
+                      setChangelog(entries);
+                      setHistoryTestStatus("Test write succeeded (history should start working).");
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : String(e);
+                      setHistoryTestStatus(`Test write failed: ${msg}`);
+                    }
+                  })();
+                }}
+                className="rounded bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-200"
+              >
+                Test history write
+              </button>
+              {historyTestStatus && (
+                <span className="min-w-0 truncate text-xs text-zinc-500" title={historyTestStatus}>
+                  {historyTestStatus}
+                </span>
+              )}
+            </div>
             {changelogWriteWarning && (
               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
                 <p className="font-medium">History writes are failing</p>
