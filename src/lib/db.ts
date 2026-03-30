@@ -103,6 +103,16 @@ async function logChange(entry: {
     await addDoc(changelogCollectionRef(), payload);
   } catch (e) {
     console.error("[Changelog] failed to log change:", e);
+    const code =
+      e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : "";
+    const message = e instanceof Error ? e.message : String(e);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("scheduler-changelog-error", {
+          detail: { message, code, action: entry.action },
+        }),
+      );
+    }
   }
 }
 

@@ -56,6 +56,8 @@ export default function Home() {
   const [assignedOptions, setAssignedOptions] = useState<AssignedOption[]>(DEFAULT_ASSIGNED_OPTIONS);
   const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
   const [changelogError, setChangelogError] = useState<string | null>(null);
+  /** Set when Firestore rejects a changelog write (timeline still updates). */
+  const [changelogWriteWarning, setChangelogWriteWarning] = useState<string | null>(null);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
   const [appTitle, setAppTitle] = useState(DEFAULT_TITLE);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -68,6 +70,17 @@ export default function Home() {
   useEffect(() => {
     const saved = localStorage.getItem("app-title");
     if (saved) setAppTitle(saved);
+  }, []);
+
+  useEffect(() => {
+    const onChangelogWriteFail = (e: Event) => {
+      const ce = e as CustomEvent<{ message?: string; code?: string; action?: string }>;
+      const { message = "Unknown error", code, action } = ce.detail ?? {};
+      const parts = [code, action, message].filter((p): p is string => Boolean(p && String(p).trim()));
+      setChangelogWriteWarning(parts.join(" · "));
+    };
+    window.addEventListener("scheduler-changelog-error", onChangelogWriteFail);
+    return () => window.removeEventListener("scheduler-changelog-error", onChangelogWriteFail);
   }, []);
 
   useEffect(() => {
@@ -669,6 +682,32 @@ export default function Home() {
         </div>
       </header>
 
+      {changelogWriteWarning && (
+        <div
+          className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="min-w-0">
+            <span className="font-medium">History is not recording:</span>{" "}
+            <span className="break-words opacity-95">{changelogWriteWarning}</span>
+            {/permission|insufficient/i.test(changelogWriteWarning) && (
+              <span className="mt-1 block text-xs text-amber-900/90">
+                In Firebase → Firestore → Rules, ensure signed-in users can <code className="rounded bg-amber-100/80 px-1">create</code> documents
+                in the <code className="rounded bg-amber-100/80 px-1">changelog</code> collection (see{" "}
+                <code className="rounded bg-amber-100/80 px-1">firestore.rules</code> in this repo).
+              </span>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => setChangelogWriteWarning(null)}
+            className="shrink-0 rounded px-2 py-1 text-xs font-medium text-amber-900 underline decoration-amber-600/50 hover:bg-amber-100/80"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <section className="min-w-0 space-y-3">
           {projects.length === 0 && (
             <div className="rounded-lg border border-zinc-200 bg-white p-3">
@@ -716,6 +755,12 @@ export default function Home() {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-3">
+            {changelogWriteWarning && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                <p className="font-medium">History writes are failing</p>
+                <p className="mt-1 break-words opacity-90">{changelogWriteWarning}</p>
+              </div>
+            )}
             {changelogError && (
               <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
                 <p className="font-medium">Could not load history</p>
