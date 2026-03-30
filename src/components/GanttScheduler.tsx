@@ -657,9 +657,14 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           const dateRangeText = start.isSame(due, "day")
                             ? start.format("MM/DD/YY")
                             : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`;
+                          const assigneeDisplay =
+                            barOpt?.label || (task.assignedTo ? String(task.assignedTo) : "");
+                          const barLabelText = assigneeDisplay
+                            ? `${dateRangeText} (${assigneeDisplay})`
+                            : dateRangeText;
                           const innerTextMaxPx = Math.max(0, barWidth - BAR_DATE_INSET_PX);
                           const dateFitsInBar =
-                            innerTextMaxPx >= approximateLabelWidthPx(dateRangeText, barLabelFontPx) + 2;
+                            innerTextMaxPx >= approximateLabelWidthPx(barLabelText, barLabelFontPx) + 2;
                           return (
                             <>
                               <div
@@ -693,10 +698,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                   {dateFitsInBar ? (
                                     <span
                                       className="block truncate px-1.5 text-left"
-                                      title={dateRangeText}
+                                      title={barLabelText}
                                       style={{ fontSize: barLabelFontPx, lineHeight: `${TASK_BAR_H}px` }}
                                     >
-                                      {dateRangeText}
+                                      {barLabelText}
                                     </span>
                                   ) : null}
                                 </div>
@@ -709,7 +714,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                               {!dateFitsInBar ? (
                                 <span
                                   className="pointer-events-none absolute z-[5] whitespace-nowrap text-zinc-700"
-                                  title={dateRangeText}
+                                  title={barLabelText}
                                   style={{
                                     left: left + barWidth + 6,
                                     top: "50%",
@@ -718,7 +723,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                                     lineHeight: `${TASK_BAR_H}px`,
                                   }}
                                 >
-                                  {dateRangeText}
+                                  {barLabelText}
                                 </span>
                               ) : null}
                             </>
