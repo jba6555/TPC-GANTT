@@ -339,6 +339,63 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     return { chartStart: cs, chartEnd: ce, pxPerDay: ppd, columns: cols, yearHeaders: years, monthHeaders: months, gridLinePx: glp };
   }, [tasks, projects, zoom]);
 
+  // Fast lookup maps used by the live-drag dependency tracking.
+  const tasksById = useMemo(() => {
+    const map = new Map<string, ProjectTask>();
+    for (const t of tasks) map.set(t.id, t);
+    return map;
+  }, [tasks]);
+
+  const dependencyChildrenByParent = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const t of tasks) {
+      if (!t.dependency) continue;
+      const pid = t.dependency.dependsOnTaskId;
+      const arr = map.get(pid) ?? [];
+      arr.push(t.id);
+      map.set(pid, arr);
+    }
+    return map;
+  }, [tasks]);
+
+  /**
+   * BFS from `rootId` to compute how many px each descendant bar should shift left
+   * during a live drag, given how the parent's start and end dates are shifting.
+   *
+   * shiftStart / shiftEnd are in DAYS (positive = moving later).
+   *
+   * Returns: Map<taskId, leftShiftDays>  (descendants only, not root)
+   */
+  function collectDependentShifts(
+    rootId: string,
+    shiftStart: number,
+    shiftEnd: number,
+  ): Map<string, number> {
+    const result = new Map<string, number>();
+    const queue: Array<{ id: string; ss: number; se: number }> = [{ id: rootId, ss: shiftStart, se: shiftEnd }];
+    const seen = new Set<string>([rootId]);
+
+    while (queue.length > 0) {
+      const { id, ss, se } = queue.shift()!;
+      const children = dependencyChildrenByParent.get(id) ?? [];
+      for (const childId of children) {
+        if (seen.has(childId)) continue;
+        seen.add(childId);
+        const child = tasksById.get(childId);
+        if (!child?.dependency) continue;
+        const depType = child.dependency.type;
+        // How many days does this child's bar shift left?
+        // FS: child start tracks parent END
+        // SS: child start tracks parent START
+        // FF: child end tracks parent END → same shift on left (we keep width)
+        const childShift = depType === "SS" ? ss : se;
+        if (childShift !== 0) result.set(childId, childShift);
+        // Propagate: child's own start/end shift by childShift
+        queue.push({ id: childId, ss: childShift, se: childShift });
+      }
+    }
+    return result;
+  }
 
   async function handlePointerDown(
     event: React.PointerEvent<HTMLElement>,
@@ -355,7 +412,45 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     setDragTaskId(task.id);
     dragOccurredRef.current = false;
 
+    // Capture the original pixel positions of every descendant bar so we can
+    // shift them live during the drag without touching React state.
+    const dependentBaseLeft = new Map<string, number>();
+    {
+      const allDescendants = collectDependentShifts(task.id, 0, 0); // just to get ids
+      // We need ALL descendant IDs regardless of shift direction; collect via BFS.
+      const queue: string[] = [task.id];
+      const seen = new Set<string>([task.id]);
+      while (queue.length > 0) {
+        const id = queue.shift()!;
+        const children = dependencyChildrenByParent.get(id) ?? [];
+        for (const cid of children) {
+          if (seen.has(cid)) continue;
+          seen.add(cid);
+          queue.push(cid);
+        }
+      }
+      // Record base left (in px) for each descendant.
+      if (viewportRef.current) {
+        for (const cid of seen) {
+          if (cid === task.id) continue;
+          const el = viewportRef.current.querySelector(`[data-task-id="${cid}"]`) as HTMLElement | null;
+          if (el) {
+            dependentBaseLeft.set(cid, parseFloat(el.style.left) || 0);
+          } else {
+            // Fall back to computing from task dates.
+            const t = tasksById.get(cid);
+            if (t) {
+              const s = dayjs(t.startDate || t.dueDate);
+              dependentBaseLeft.set(cid, s.diff(chartStart, "day") * pxPerDay);
+            }
+          }
+        }
+      }
+      void allDescendants; // suppress unused warning
+    }
+
     let hasDragged = false;
+
     const onMove = (moveEvent: PointerEvent) => {
       if (Math.abs(moveEvent.clientX - startX) > DRAG_THRESHOLD_PX) {
         hasDragged = true;
@@ -364,24 +459,48 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
       if (!viewportRef.current) return;
       const deltaX = moveEvent.clientX - startX;
       const dayDelta = Math.round(deltaX / pxPerDay);
-      const row = viewportRef.current.querySelector(`[data-task-id="${task.id}"]`) as HTMLDivElement | null;
-      if (!row) return;
 
-      let nextStart = originalStart;
-      let nextDue = originalDue;
-      if (mode === "move") {
-        nextStart = originalStart.add(dayDelta, "day");
-        nextDue = originalDue.add(dayDelta, "day");
-      } else if (mode === "resizeStart") {
-        nextStart = originalStart.add(dayDelta, "day");
-        if (nextStart.isAfter(nextDue)) nextStart = nextDue;
-      } else {
-        nextDue = originalDue.add(dayDelta, "day");
-        if (nextDue.isBefore(nextStart)) nextDue = nextStart;
+      // --- Move the dragged task bar ---
+      const row = viewportRef.current.querySelector(`[data-task-id="${task.id}"]`) as HTMLDivElement | null;
+      if (row) {
+        let nextStart = originalStart;
+        let nextDue = originalDue;
+        if (mode === "move") {
+          nextStart = originalStart.add(dayDelta, "day");
+          nextDue = originalDue.add(dayDelta, "day");
+        } else if (mode === "resizeStart") {
+          nextStart = originalStart.add(dayDelta, "day");
+          if (nextStart.isAfter(nextDue)) nextStart = nextDue;
+        } else {
+          nextDue = originalDue.add(dayDelta, "day");
+          if (nextDue.isBefore(nextStart)) nextDue = nextStart;
+        }
+        row.style.left = `${nextStart.diff(chartStart, "day") * pxPerDay}px`;
+        row.style.width = `${Math.max(nextDue.diff(nextStart, "day") + 1, 1) * pxPerDay}px`;
       }
 
-      row.style.left = `${nextStart.diff(chartStart, "day") * pxPerDay}px`;
-      row.style.width = `${Math.max(nextDue.diff(nextStart, "day") + 1, 1) * pxPerDay}px`;
+      // --- Shift every dependent bar live ---
+      // Determine how much the parent's start and end shifted in days.
+      let shiftStart = 0;
+      let shiftEnd = 0;
+      if (mode === "move") {
+        shiftStart = dayDelta;
+        shiftEnd = dayDelta;
+      } else if (mode === "resizeStart") {
+        shiftStart = dayDelta;
+        shiftEnd = 0;
+      } else {
+        shiftStart = 0;
+        shiftEnd = dayDelta;
+      }
+
+      const shifts = collectDependentShifts(task.id, shiftStart, shiftEnd);
+      for (const [cid, shiftDays] of shifts.entries()) {
+        const depRow = viewportRef.current.querySelector(`[data-task-id="${cid}"]`) as HTMLDivElement | null;
+        if (!depRow) continue;
+        const baseLeft = dependentBaseLeft.get(cid) ?? 0;
+        depRow.style.left = `${baseLeft + shiftDays * pxPerDay}px`;
+      }
     };
 
     const onUp = (upEvent: PointerEvent) => {
@@ -414,6 +533,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
       const nextDueStr = nextDue.format("YYYY-MM-DD");
       setPending(task.id);
       setTimelineSaveError(null);
+      // Only save the parent; the server will recompute all dependents via
+      // recomputeAndApplyDependentTasks and the Firestore listener will update
+      // dependent bars to their exact final positions.
       void onUpdateTaskDates(task.id, nextStartStr, nextDueStr)
         .catch((e) => {
           const msg = e instanceof Error ? e.message : String(e);
