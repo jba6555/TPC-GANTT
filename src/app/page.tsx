@@ -40,6 +40,7 @@ import type {
   TaskType,
 } from "@/types/scheduler";
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
+import { useAutoBackup } from "@/hooks/useAutoBackup";
 
 export default function Home() {
   const APP_VERSION = "frozen-col-v14";
@@ -222,6 +223,8 @@ export default function Home() {
   }, [authReady, userId, userEmail, allowedUsersReady, allowedUserEmails, allowedUsersLoadError, router]);
 
   const actor = useMemo(() => ({ userId, userEmail }), [userId, userEmail]);
+
+  useAutoBackup(projects, allTasks, changelog, authReady);
 
   async function handleAddProject(input: ProjectInput) {
     await createProject(userId, input, userEmail);
