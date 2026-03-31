@@ -996,8 +996,18 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         className="flex w-full cursor-pointer items-center overflow-hidden border-b border-zinc-100 bg-white px-2 transition-colors hover:bg-zinc-50"
                         style={{ height: TASK_ROW_H }}
                       >
-                        <span className="mr-1 shrink-0 text-[11px] leading-none text-amber-400" aria-hidden="true">
-                          {isMajorMilestone(task) ? "★" : "\u00a0"}
+                        <span
+                          role="button"
+                          aria-label={isMajorMilestone(task) ? "Major milestone – click to make minor" : "Minor milestone – click to make major"}
+                          title={isMajorMilestone(task) ? "Major milestone – click to make minor" : "Minor milestone – click to make major"}
+                          className={`mr-1 shrink-0 text-[8px] leading-none transition-colors hover:opacity-80 ${isMajorMilestone(task) ? "text-amber-400" : "text-zinc-300"}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const next: MilestoneImportance = isMajorMilestone(task) ? "minor" : "major";
+                            void onUpdateTask(task.id, { milestoneImportance: next });
+                          }}
+                        >
+                          ★
                         </span>
                         <p
                           className="min-w-0 flex-1 truncate text-right text-[10px] font-medium leading-tight text-zinc-900"
