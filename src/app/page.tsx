@@ -610,7 +610,7 @@ export default function Home() {
         </div>
       )}
 
-      <section className="min-w-0 space-y-3 max-h-[calc(100vh-140px)] overflow-y-auto">
+      <section className="min-w-0 space-y-3">
           {projects.length === 0 && (
             <div className="rounded-lg border border-zinc-200 bg-white p-3">
               <h2 className="text-lg font-semibold text-zinc-900">No projects yet</h2>

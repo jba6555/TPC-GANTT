@@ -777,85 +777,127 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
 
   return (
-    <section className="min-w-0 rounded-lg border border-zinc-200 bg-white p-3">
-      {timelineSaveError && (
-        <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
-          <p className="font-medium">Timeline update failed</p>
-          <p className="mt-1 break-words opacity-90">{timelineSaveError}</p>
-        </div>
-      )}
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setProjectSaveError(null);
-              setNewProjectName("");
-              setProjectModalOpen(true);
-            }}
-            className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-          >
-            + Project
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowMajorOnlyGlobal((prev) => !prev)}
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
-              showMajorOnlyGlobal
-                ? "border-amber-500 bg-amber-100 text-amber-900"
-                : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
-            }`}
-            title="Toggle major milestones for all projects"
-            aria-pressed={showMajorOnlyGlobal}
-          >
-            <span className="text-[11px]">★</span>
-            <span>Major</span>
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
-          {(["week", "month", "6month", "year"] as ZoomLevel[]).map((level) => {
-            const label = ZOOM_LEVELS.find((z) => z.key === level)!.label;
-            return (
+    <section className="min-w-0 flex flex-col rounded-lg border border-zinc-200 bg-white p-3" style={{ maxHeight: "calc(100vh - 140px)" }}>
+
+      {/* ── FROZEN HEADER — never scrolls ── */}
+      <div className="flex-shrink-0">
+        {timelineSaveError && (
+          <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+            <p className="font-medium">Timeline update failed</p>
+            <p className="mt-1 break-words opacity-90">{timelineSaveError}</p>
+          </div>
+        )}
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setProjectSaveError(null);
+                setNewProjectName("");
+                setProjectModalOpen(true);
+              }}
+              className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              + Project
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMajorOnlyGlobal((prev) => !prev)}
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                showMajorOnlyGlobal
+                  ? "border-amber-500 bg-amber-100 text-amber-900"
+                  : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              }`}
+              title="Toggle major milestones for all projects"
+              aria-pressed={showMajorOnlyGlobal}
+            >
+              <span className="text-[11px]">★</span>
+              <span>Major</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
+              {(["week", "month", "6month", "year"] as ZoomLevel[]).map((level) => {
+                const label = ZOOM_LEVELS.find((z) => z.key === level)!.label;
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => { scrollToTodayRef.current = true; setZoom(level); }}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      zoom === level
+                        ? "bg-white text-zinc-900 shadow-sm"
+                        : "text-zinc-500 hover:text-zinc-700"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              <div className="mx-0.5 h-4 w-px bg-zinc-300" />
               <button
-                key={level}
                 type="button"
-                onClick={() => { scrollToTodayRef.current = true; setZoom(level); }}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  zoom === level
-                    ? "bg-white text-zinc-900 shadow-sm"
-                    : "text-zinc-500 hover:text-zinc-700"
-                }`}
+                onClick={() => {
+                  const el = viewportRef.current;
+                  if (!el) return;
+                  el.scrollTo({ left: todayPx, behavior: "smooth" });
+                }}
+                className="rounded-md px-2.5 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
               >
-                {label}
+                Today
               </button>
-            );
-          })}
-          <div className="mx-0.5 h-4 w-px bg-zinc-300" />
-          <button
-            type="button"
-            onClick={() => {
-              const el = viewportRef.current;
-              if (!el) return;
-              const targetScroll = todayPx;
-              el.scrollTo({ left: targetScroll, behavior: "smooth" });
-            }}
-            className="rounded-md px-2.5 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
-          >
-            Today
-          </button>
+            </div>
+          </div>
         </div>
-      </div>
+
+        {/* Date header rows: year / month / day — synced horizontally with the body timeline */}
+        <div className="flex min-w-0">
+          <div className="shrink-0 border-r border-zinc-200 bg-white" style={{ width: LABEL_WIDTH }}>
+            <div className="border-b border-zinc-200 bg-zinc-100" style={{ height: HEADER_ROW_H }} />
+            <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: HEADER_ROW_H }} />
+            <div className="border-b border-zinc-200 bg-white" style={{ height: HEADER_ROW_H }} />
+          </div>
+          <div className="min-w-0 flex-1 overflow-hidden" ref={headerTimelineRef}>
+            <div style={{ width: timelineWidth }}>
+              {(() => {
+                const gridTemplate = columns.map((c) => `${c.widthPx}px`).join(" ");
+                return (
+                  <>
+                    <div className="grid border-b border-zinc-200 bg-zinc-100" style={{ gridTemplateColumns: gridTemplate, height: HEADER_ROW_H }}>
+                      {yearHeaders.map((y) => (
+                        <div key={y.key} className="relative flex items-center overflow-visible border-r border-zinc-300" style={{ gridColumn: `span ${y.span}` }}>
+                          <div className="sticky left-0 w-fit px-2 text-[11px] font-semibold text-zinc-700">{y.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid border-b border-zinc-200 bg-zinc-50" style={{ gridTemplateColumns: gridTemplate, height: HEADER_ROW_H }}>
+                      {monthHeaders.map((m) => (
+                        <div key={m.key} className="relative flex items-center overflow-visible border-r border-zinc-200" style={{ gridColumn: `span ${m.span}` }}>
+                          <div className="sticky left-0 w-fit px-2 text-[10px] font-medium text-zinc-600">{m.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid border-b border-zinc-200" style={{ gridTemplateColumns: gridTemplate, height: HEADER_ROW_H }}>
+                      {columns.map((col) => (
+                        <div key={col.key} className="flex items-center justify-center overflow-hidden border-r border-zinc-100 text-[10px] text-zinc-500" style={{ minWidth: 0 }}>
+                          {col.widthPx >= 14 ? col.label : ""}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex min-w-0">
+      {/* ── SCROLLABLE BODY — projects + task rows scroll here ── */}
+      <div className="flex min-w-0 flex-1 overflow-y-auto">
         <div
           className="shrink-0 border-r border-zinc-200 bg-white"
           style={{ width: LABEL_WIDTH }}
         >
-          <div className="border-b border-zinc-200 bg-zinc-100" style={{ height: HEADER_ROW_H }} />
-          <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: HEADER_ROW_H }} />
-          <div className="border-b border-zinc-200 bg-white" style={{ height: HEADER_ROW_H }} />
           {sortedProjects.map((project) => {
             const projectTasks = getVisibleTasksForProject(project.id);
             const tree = buildTaskTree(projectTasks);
@@ -977,60 +1019,6 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
 
         <div className="min-w-0 flex-1 overflow-x-scroll" ref={viewportRef}>
           <div className="relative" style={{ width: timelineWidth }}>
-            {(() => {
-              const gridTemplate = columns.map((c) => `${c.widthPx}px`).join(" ");
-              return (
-                <>
-                  <div
-                    className="grid border-b border-zinc-200 bg-zinc-100"
-                    style={{ gridTemplateColumns: gridTemplate, height: HEADER_ROW_H }}
-                  >
-                    {yearHeaders.map((y) => (
-                      <div
-                        key={y.key}
-                        className="relative flex items-center overflow-visible border-r border-zinc-300"
-                        style={{ gridColumn: `span ${y.span}` }}
-                      >
-                        <div className="sticky left-0 w-fit px-2 text-[11px] font-semibold text-zinc-700">
-                          {y.label}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div
-                    className="grid border-b border-zinc-200 bg-zinc-50"
-                    style={{ gridTemplateColumns: gridTemplate, height: HEADER_ROW_H }}
-                  >
-                    {monthHeaders.map((m) => (
-                      <div
-                        key={m.key}
-                        className="relative flex items-center overflow-visible border-r border-zinc-200"
-                        style={{ gridColumn: `span ${m.span}` }}
-                      >
-                        <div className="sticky left-0 w-fit px-2 text-[10px] font-medium text-zinc-600">
-                          {m.label}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div
-                    className="grid border-b border-zinc-200"
-                    style={{ gridTemplateColumns: gridTemplate, height: HEADER_ROW_H }}
-                  >
-                    {columns.map((col) => (
-                      <div
-                        key={col.key}
-                        className="flex items-center justify-center overflow-hidden border-r border-zinc-100 text-[10px] text-zinc-500"
-                        style={{ minWidth: 0 }}
-                      >
-                        {col.widthPx >= 14 ? col.label : ""}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
-
             <div
               ref={todayMarkerRef}
               data-today-marker
