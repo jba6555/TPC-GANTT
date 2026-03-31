@@ -1567,6 +1567,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   return;
                 }
                 setEditError(null);
+                const taskId = notesTask.id;
+                setNotesTask(null);
                 setEditSaving(true);
                 const fields: Parameters<typeof onUpdateTask>[1] = {
                   title: editTitle.trim(),
@@ -1578,16 +1580,13 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   milestoneImportance: editMilestoneImportance,
                 };
                 // Dependency updates are handled via the dependency editor and server logic.
-                void onUpdateTask(notesTask.id, fields)
-                  .then(() => {
-                    setNotesTask(null);
-                  })
+                void onUpdateTask(taskId, fields)
                   .catch((err: unknown) => {
                     const message =
                       err && typeof err === "object" && "message" in err
                         ? String((err as { message?: string }).message)
                         : "";
-                    setEditError(message || "Could not update task.");
+                    window.alert(message || "Could not update task.");
                     console.error(err);
                   })
                   .finally(() => setEditSaving(false));
