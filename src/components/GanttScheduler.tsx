@@ -1255,9 +1255,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   assignedTo: editAssignedTo,
                   status: editStatus,
                 };
-                if (editDependency) {
-                  fields.dependency = editDependency;
-                }
+                // Dependency updates are handled via the dependency editor and server logic.
                 void onUpdateTask(notesTask.id, fields)
                   .then(() => {
                     setNotesTask((prev) => {
