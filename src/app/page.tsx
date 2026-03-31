@@ -61,6 +61,7 @@ export default function Home() {
   const [changelogError, setChangelogError] = useState<string | null>(null);
   /** Set when Firestore rejects a changelog write (timeline still updates). */
   const [changelogWriteWarning, setChangelogWriteWarning] = useState<string | null>(null);
+  const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   const [historyTestStatus, setHistoryTestStatus] = useState<string | null>(null);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
   const [appTitle, setAppTitle] = useState(DEFAULT_TITLE);
@@ -125,17 +126,40 @@ export default function Home() {
 
   useEffect(() => {
     if (!authReady || !userId) return;
-    const unsubscribe = subscribeToProjects((incoming) => {
-      setProjects(incoming.filter((p) => !deletingProjectIdsRef.current.has(p.id)));
-    });
+    const unsubscribe = subscribeToProjects(
+      (incoming) => {
+        setProjects(incoming.filter((p) => !deletingProjectIdsRef.current.has(p.id)));
+        setDataLoadError(null);
+      },
+      (err) => {
+        console.error("[page] projects subscription error:", err);
+        const code = (err as { code?: string }).code ?? "";
+        if (/permission|insufficient/i.test(code) || /permission|insufficient/i.test(err.message)) {
+          setDataLoadError("permission-denied");
+        } else {
+          setDataLoadError(err.message || "Failed to load projects.");
+        }
+      },
+    );
     return () => unsubscribe();
   }, [authReady, userId]);
 
   useEffect(() => {
     if (!authReady || !userId) return;
-    const unsubscribe = subscribeToAllTasks((incoming) => {
-      setAllTasks(incoming.filter((t) => !deletingProjectIdsRef.current.has(t.projectId)));
-    });
+    const unsubscribe = subscribeToAllTasks(
+      (incoming) => {
+        setAllTasks(incoming.filter((t) => !deletingProjectIdsRef.current.has(t.projectId)));
+      },
+      (err) => {
+        console.error("[page] tasks subscription error:", err);
+        const code = (err as { code?: string }).code ?? "";
+        if (/permission|insufficient/i.test(code) || /permission|insufficient/i.test(err.message)) {
+          setDataLoadError("permission-denied");
+        } else {
+          setDataLoadError((prev) => prev ?? (err.message || "Failed to load tasks."));
+        }
+      },
+    );
     return () => unsubscribe();
   }, [authReady, userId]);
 
@@ -635,8 +659,38 @@ export default function Home() {
         </div>
       )}
 
+      {dataLoadError && (
+        <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+          <div className="min-w-0">
+            {dataLoadError === "permission-denied" ? (
+              <>
+                <p className="font-medium">Access denied — your account cannot load data.</p>
+                <p className="mt-1 text-xs text-red-800">
+                  Ask an administrator to add your email (<span className="font-mono">{userEmail}</span>) using the{" "}
+                  <span className="font-medium">Users</span> button in the top-right, then sign out and sign back in.
+                  If you are the administrator, check that the Firestore security rules are deployed (
+                  <span className="font-mono">firestore.rules</span> in this repo).
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">Could not load projects or tasks.</p>
+                <p className="mt-1 break-words text-xs text-red-800">{dataLoadError}</p>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setDataLoadError(null)}
+            className="shrink-0 rounded px-2 py-1 text-xs font-medium text-red-900 underline decoration-red-600/50 hover:bg-red-100/80"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <section className="min-w-0 space-y-3">
-          {projects.length === 0 && (
+          {dataLoadError === null && projects.length === 0 && (
             <div className="rounded-lg border border-zinc-200 bg-white p-3">
               <h2 className="text-lg font-semibold text-zinc-900">No projects yet</h2>
               <div className="flex flex-wrap items-center gap-2">
