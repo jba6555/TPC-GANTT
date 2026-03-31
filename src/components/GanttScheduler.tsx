@@ -110,8 +110,12 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [taskDependencyParentId, setTaskDependencyParentId] = useState<string>("");
   const [taskDependencyType, setTaskDependencyType] = useState<TaskDependencyType>("FS");
   const [taskDependencyOffsetDays, setTaskDependencyOffsetDays] = useState<number>(0);
+  const [taskEndMode, setTaskEndMode] = useState<"duration" | "fixed">("duration");
   const [taskDurationDays, setTaskDurationDays] = useState<number | "">("");
+  const [taskFixedEndDate, setTaskFixedEndDate] = useState("");
   const [taskMilestoneImportance, setTaskMilestoneImportance] = useState<MilestoneImportance>("major");
+  const [showMajorOnlyGlobal, setShowMajorOnlyGlobal] = useState(false);
+  const [majorOnlyProjects, setMajorOnlyProjects] = useState<Set<string>>(new Set());
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
@@ -449,11 +453,25 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     return map;
   }, [tasks]);
 
+  function isMajorMilestone(task: ProjectTask): boolean {
+    const importance: MilestoneImportance =
+      task.milestoneImportance ?? (task.type === "milestone" ? "major" : "minor");
+    return task.type === "milestone" && importance === "major";
+  }
+
+  function getVisibleTasksForProject(projectId: string): ProjectTask[] {
+    const projectTasks = tasksByProject.get(projectId) ?? [];
+    if (!showMajorOnlyGlobal && !majorOnlyProjects.has(projectId)) {
+      return projectTasks;
+    }
+    return projectTasks.filter((t) => isMajorMilestone(t));
+  }
+
   const sortedProjects = useMemo(() => {
     const todayKey = dayjs().format("YYYY-MM-DD");
 
     const withKey = projects.map((project) => {
-      const projectTasks = tasksByProject.get(project.id) ?? [];
+      const projectTasks = getVisibleTasksForProject(project.id);
 
       let nextUpcoming: string | null = null;
       let latestPast: string | null = null;
@@ -612,7 +630,22 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
         >
           + Project
         </button>
-        <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowMajorOnlyGlobal((prev) => !prev)}
+            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+              showMajorOnlyGlobal
+                ? "border-amber-500 bg-amber-100 text-amber-900"
+                : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+            }`}
+            title="Toggle major milestones for all projects"
+            aria-pressed={showMajorOnlyGlobal}
+          >
+            <span className="text-[11px]">★</span>
+            <span>{showMajorOnlyGlobal ? "Major only" : "All tasks"}</span>
+          </button>
+          <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
           {(["week", "month", "6month", "year"] as ZoomLevel[]).map((level) => {
             const label = ZOOM_LEVELS.find((z) => z.key === level)!.label;
             return (
@@ -645,6 +678,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
           </button>
         </div>
       </div>
+      </div>
 
       <div className="flex min-w-0">
         <div
@@ -655,7 +689,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
           <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: HEADER_ROW_H }} />
           <div className="border-b border-zinc-200 bg-white" style={{ height: HEADER_ROW_H }} />
           {sortedProjects.map((project) => {
-            const projectTasks = tasksByProject.get(project.id) ?? [];
+            const projectTasks = getVisibleTasksForProject(project.id);
             const tree = buildTaskTree(projectTasks);
             const isCollapsed = collapsedProjects.has(project.id);
             return (
@@ -674,6 +708,26 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   </button>
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900">{project.name}</span>
                   <div className="ml-0.5 flex shrink-0 items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMajorOnlyProjects((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(project.id)) next.delete(project.id);
+                          else next.add(project.id);
+                          return next;
+                        })
+                      }
+                      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold leading-none transition-colors ${
+                        showMajorOnlyGlobal || majorOnlyProjects.has(project.id)
+                          ? "border-amber-500 bg-amber-200 text-amber-900"
+                          : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      }`}
+                      title="Show only major milestones for this project"
+                      aria-pressed={showMajorOnlyGlobal || majorOnlyProjects.has(project.id)}
+                    >
+                      ★
+                    </button>
                     {onAddTask && (
                       <button
                         type="button"
@@ -685,6 +739,11 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           setTaskDueDate("");
                           setTaskNotes("");
                           setTaskAssignedTo("");
+                          setTaskIsDependent(false);
+                          setTaskDependencyParentId("");
+                          setTaskDependencyOffsetDays(0);
+                          setTaskDurationDays("");
+                          setTaskMilestoneImportance("major");
                         }}
                         className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-emerald-600/25 bg-emerald-600/[0.08] text-[10px] font-semibold leading-none text-emerald-800 transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/[0.14] active:bg-emerald-600/[0.2]"
                         title="Add task"
@@ -809,7 +868,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
             />
 
             {sortedProjects.map((project) => {
-              const projectTasks = tasksByProject.get(project.id) ?? [];
+              const projectTasks = getVisibleTasksForProject(project.id);
               const tree = buildTaskTree(projectTasks);
               const isCollapsed = collapsedProjects.has(project.id);
               return (
@@ -1037,6 +1096,11 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   setTaskError(null);
                   setTaskNotes("");
                   setTaskAssignedTo("");
+                  setTaskIsDependent(false);
+                  setTaskDependencyParentId("");
+                  setTaskDependencyOffsetDays(0);
+                  setTaskDurationDays("");
+                  setTaskMilestoneImportance("major");
                 }}
                 className="rounded px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
               >
@@ -1047,25 +1111,103 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                  if (!taskTitle.trim() || !onAddTask) return;
+                if (!taskTitle.trim() || !onAddTask) return;
                 const projectId = taskModalProjectId;
                 if (!projectId) return;
-                  let dependency: TaskDependency | undefined;
-                  if (taskIsDependent && taskDependencyParentId) {
-                    dependency = {
-                      dependsOnTaskId: taskDependencyParentId,
-                      type: taskDependencyType,
-                      offsetDays: taskDependencyOffsetDays || 0,
-                    };
+
+                let startDateForSave: string | undefined;
+                let dueDateForSave: string | undefined;
+                let dependency: TaskDependency | undefined;
+
+                if (taskIsDependent) {
+                  if (!taskDependencyParentId) {
+                    setTaskError("Select a parent task for the dependency.");
+                    return;
                   }
+                  const projectTasks = tasksByProject.get(projectId) ?? [];
+                  const parent = projectTasks.find((t) => t.id === taskDependencyParentId);
+                  if (!parent) {
+                    setTaskError("Selected parent task could not be found.");
+                    return;
+                  }
+                  const parentStartStr = parent.startDate || parent.dueDate;
+                  const parentEndStr = parent.dueDate;
+                  if (!parentStartStr || !parentEndStr) {
+                    setTaskError("Parent task must have dates before creating a dependent task.");
+                    return;
+                  }
+
+                  const parentStart = dayjs(parentStartStr);
+                  const parentEnd = dayjs(parentEndStr);
+                  const offset = taskDependencyOffsetDays || 0;
+
+                  let childStart = parentStart;
+                  let childEnd: dayjs.Dayjs;
+                  if (taskDependencyType === "FS") {
+                    childStart = parentEnd.add(offset, "day");
+                  } else if (taskDependencyType === "SS") {
+                    childStart = parentStart.add(offset, "day");
+                  } else {
+                    // FF: child end is offset from parent end; start will be derived from duration/fixed end.
+                    childStart = parentStart;
+                  }
+
+                  if (taskEndMode === "duration") {
+                    if (!taskDurationDays || taskDurationDays <= 0) {
+                      setTaskError("Enter a positive duration in days.");
+                      return;
+                    }
+                    if (taskDependencyType === "FF") {
+                      // For FF with duration, end is offset from parent end.
+                      const endFromParent = parentEnd.add(offset, "day");
+                      childEnd = endFromParent;
+                      childStart = endFromParent.subtract(taskDurationDays - 1, "day");
+                    } else {
+                      childEnd = childStart.add(taskDurationDays - 1, "day");
+                    }
+                  } else {
+                    // Fixed scheduled end date mode.
+                    if (!taskFixedEndDate) {
+                      setTaskError("Select a scheduled completion date.");
+                      return;
+                    }
+                    childEnd = dayjs(taskFixedEndDate);
+                    if (childEnd.isBefore(childStart, "day")) {
+                      setTaskError("Completion date must be on or after the start date.");
+                      return;
+                    }
+                    if (taskDependencyType === "FF") {
+                      // Align end with offset from parent end, ignore manual mismatch.
+                      childEnd = parentEnd.add(offset, "day");
+                      if (taskEndMode === "fixed" && taskFixedEndDate) {
+                        childEnd = dayjs(taskFixedEndDate);
+                      }
+                    }
+                  }
+
+                  startDateForSave = childStart.format("YYYY-MM-DD");
+                  dueDateForSave = childEnd.format("YYYY-MM-DD");
+
+                  dependency = {
+                    dependsOnTaskId: taskDependencyParentId,
+                    type: taskDependencyType,
+                    offsetDays: offset,
+                  };
+                } else {
+                  startDateForSave = taskStartDate || undefined;
+                  dueDateForSave = taskDueDate || undefined;
+                }
+
                 const payload = {
                   title: taskTitle.trim(),
-                  startDate: taskStartDate || undefined,
-                  dueDate: taskDueDate || undefined,
+                  startDate: startDateForSave,
+                  dueDate: dueDateForSave,
                   notes: taskNotes.trim() || undefined,
                   assignedTo: taskAssignedTo || undefined,
-                    dependency,
+                  dependency,
+                  milestoneImportance: taskMilestoneImportance,
                 };
+
                 setTaskError(null);
                 setTaskModalProjectId(null);
                 setTaskTitle("");
@@ -1073,9 +1215,14 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 setTaskDueDate("");
                 setTaskNotes("");
                 setTaskAssignedTo("");
-                  setTaskIsDependent(false);
-                  setTaskDependencyParentId("");
-                  setTaskDependencyOffsetDays(0);
+                setTaskIsDependent(false);
+                setTaskDependencyParentId("");
+                setTaskDependencyOffsetDays(0);
+                setTaskEndMode("duration");
+                setTaskDurationDays("");
+                setTaskFixedEndDate("");
+                setTaskMilestoneImportance("major");
+
                 void onAddTask(projectId, payload).catch((err: unknown) => {
                   const message =
                     err && typeof err === "object" && "message" in err
@@ -1095,6 +1242,36 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   required
                   className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-zinc-700">Milestone type</p>
+                <div className="flex flex-wrap gap-3">
+                  <label className="inline-flex items-center gap-1.5 text-xs text-zinc-700">
+                    <input
+                      type="checkbox"
+                      className="h-3 w-3 rounded border-zinc-300 text-amber-500"
+                      checked={taskMilestoneImportance === "major"}
+                      onChange={(e) => {
+                        if (!e.target.checked) return;
+                        setTaskMilestoneImportance("major");
+                      }}
+                    />
+                    <span>Major Milestone</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 text-xs text-zinc-700">
+                    <input
+                      type="checkbox"
+                      className="h-3 w-3 rounded border-zinc-300 text-amber-500"
+                      checked={taskMilestoneImportance === "minor"}
+                      onChange={(e) => {
+                        if (!e.target.checked) return;
+                        setTaskMilestoneImportance("minor");
+                      }}
+                    />
+                    <span>Minor Milestone</span>
+                  </label>
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -1147,71 +1324,101 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         />
                       </div>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-zinc-700">Duration (days from start)</label>
-                      <input
-                        type="number"
-                        value={taskDurationDays}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          if (raw === "") {
-                            setTaskDurationDays("");
-                            return;
-                          }
-                          const n = Number(raw);
-                          if (Number.isNaN(n) || n <= 0) {
-                            setTaskDurationDays("");
-                            return;
-                          }
-                          setTaskDurationDays(n);
-                          if (taskStartDate) {
-                            const start = dayjs(taskStartDate);
-                            const due = start.add(n - 1, "day");
-                            setTaskDueDate(due.format("YYYY-MM-DD"));
-                          }
-                        }}
-                        className="w-full rounded border border-zinc-200 px-2 py-1 text-xs"
-                      />
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-zinc-700">How does this task finish?</p>
+                      <div className="flex flex-col gap-1 text-[11px] text-zinc-700">
+                        <label className="inline-flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name="dependent-end-mode"
+                            value="duration"
+                            checked={taskEndMode === "duration"}
+                            onChange={() => setTaskEndMode("duration")}
+                            className="h-3 w-3 rounded border-zinc-300 text-zinc-900"
+                          />
+                          <span>Duration (days from start)</span>
+                        </label>
+                        {taskEndMode === "duration" && (
+                          <div className="pl-4 space-y-1">
+                            <input
+                              type="number"
+                              value={taskDurationDays}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === "") {
+                                  setTaskDurationDays("");
+                                  return;
+                                }
+                                const n = Number(raw);
+                                if (Number.isNaN(n) || n <= 0) {
+                                  setTaskDurationDays("");
+                                  return;
+                                }
+                                setTaskDurationDays(n);
+                              }}
+                              className="w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+                            />
+                            <p className="text-[11px] text-zinc-600">
+                              The completion date will be calculated from the computed start date.
+                            </p>
+                          </div>
+                        )}
+                        <label className="inline-flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name="dependent-end-mode"
+                            value="fixed"
+                            checked={taskEndMode === "fixed"}
+                            onChange={() => setTaskEndMode("fixed")}
+                            className="h-3 w-3 rounded border-zinc-300 text-zinc-900"
+                          />
+                          <span>Scheduled end date</span>
+                        </label>
+                        {taskEndMode === "fixed" && (
+                          <div className="pl-4 space-y-1">
+                            <input
+                              type="date"
+                              value={taskFixedEndDate}
+                              onChange={(e) => setTaskFixedEndDate(e.target.value)}
+                              className="w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+                            />
+                            <p className="text-[11px] text-zinc-600">
+                              Pick the exact completion date; the duration will be derived.
+                            </p>
+                          </div>
+                        )}
+                      </div>
                       <p className="text-[11px] text-zinc-600">
-                        Leave blank to set a fixed completion date below. When filled, the complete date will be
-                        {` calculated from the start date.`}
+                        The start date is based on the parent task, dependency type, and offset. Positive offsets place
+                        the task after the parent; negative offsets place it before.
                       </p>
                     </div>
-                    <p className="text-[11px] text-zinc-600">
-                      Positive offsets place the task after the parent; negative offsets place it before.
-                    </p>
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-700">Start Date</label>
-                  <input
-                    type="date"
-                    value={taskStartDate}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setTaskStartDate(next);
-                      if (taskIsDependent && taskDurationDays && next) {
-                        const start = dayjs(next);
-                        const due = start.add(taskDurationDays - 1, "day");
-                        setTaskDueDate(due.format("YYYY-MM-DD"));
-                      }
-                    }}
-                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
-                  />
+              {!taskIsDependent && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-zinc-700">Start Date</label>
+                    <input
+                      type="date"
+                      value={taskStartDate}
+                      onChange={(e) => setTaskStartDate(e.target.value)}
+                      className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-zinc-700">Complete Date</label>
+                    <input
+                      type="date"
+                      value={taskDueDate}
+                      onChange={(e) => setTaskDueDate(e.target.value)}
+                      className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-700">Complete Date</label>
-                  <input
-                    type="date"
-                    value={taskDueDate}
-                    onChange={(e) => setTaskDueDate(e.target.value)}
-                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
-                  />
-                </div>
-              </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-sm font-medium text-zinc-700">Assigned To</label>
@@ -1325,6 +1532,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   notes: editNotes,
                   assignedTo: editAssignedTo,
                   status: editStatus,
+                  milestoneImportance: editMilestoneImportance,
                 };
                 // Dependency updates are handled via the dependency editor and server logic.
                 void onUpdateTask(notesTask.id, fields)
@@ -1339,6 +1547,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         notes: editNotes,
                         assignedTo: editAssignedTo,
                         status: editStatus,
+                        milestoneImportance: editMilestoneImportance,
                       };
                     });
                   })
@@ -1363,6 +1572,35 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   required
                   className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
                 />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-zinc-700">Milestone type</p>
+                <div className="flex flex-wrap gap-3">
+                  <label className="inline-flex items-center gap-1.5 text-xs text-zinc-700">
+                    <input
+                      type="checkbox"
+                      className="h-3 w-3 rounded border-zinc-300 text-amber-500"
+                      checked={editMilestoneImportance === "major"}
+                      onChange={(e) => {
+                        if (!e.target.checked) return;
+                        setEditMilestoneImportance("major");
+                      }}
+                    />
+                    <span>Major Milestone</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 text-xs text-zinc-700">
+                    <input
+                      type="checkbox"
+                      className="h-3 w-3 rounded border-zinc-300 text-amber-500"
+                      checked={editMilestoneImportance === "minor"}
+                      onChange={(e) => {
+                        if (!e.target.checked) return;
+                        setEditMilestoneImportance("minor");
+                      }}
+                    />
+                    <span>Minor Milestone</span>
+                  </label>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
