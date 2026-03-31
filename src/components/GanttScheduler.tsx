@@ -908,36 +908,29 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   className="flex items-center gap-1 overflow-hidden border-b border-zinc-200 bg-zinc-50 px-2"
                   style={{ height: PROJECT_ROW_H }}
                 >
+                  {/* Star filter: yellow = major-only active, grey = all visible */}
                   <button
                     type="button"
-                    onClick={() => toggleProjectCollapse(project.id)}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-sm leading-none text-[#d4a017] transition-colors hover:bg-zinc-200/80 hover:text-[#b8860b]"
-                    title={isCollapsed ? "Show tasks" : "Hide tasks"}
+                    onClick={() =>
+                      setMajorOnlyProjects((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(project.id)) next.delete(project.id);
+                        else next.add(project.id);
+                        return next;
+                      })
+                    }
+                    className={`shrink-0 text-[10px] leading-none transition-colors hover:opacity-70 ${
+                      showMajorOnlyGlobal || majorOnlyProjects.has(project.id)
+                        ? "text-amber-400"
+                        : "text-zinc-400"
+                    }`}
+                    title={showMajorOnlyGlobal || majorOnlyProjects.has(project.id) ? "Showing major milestones only – click to show all" : "Show only major milestones"}
+                    aria-pressed={showMajorOnlyGlobal || majorOnlyProjects.has(project.id)}
                   >
-                    {isCollapsed ? "\u25B6" : "\u25BC"}
+                    ★
                   </button>
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900">{project.name}</span>
                   <div className="ml-0.5 flex shrink-0 items-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setMajorOnlyProjects((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(project.id)) next.delete(project.id);
-                          else next.add(project.id);
-                          return next;
-                        })
-                      }
-                      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold leading-none transition-colors ${
-                        showMajorOnlyGlobal || majorOnlyProjects.has(project.id)
-                          ? "border-amber-500 bg-amber-200 text-amber-900"
-                          : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                      }`}
-                      title="Show only major milestones for this project"
-                      aria-pressed={showMajorOnlyGlobal || majorOnlyProjects.has(project.id)}
-                    >
-                      ★
-                    </button>
                     {onAddTask && (
                       <button
                         type="button"
@@ -981,6 +974,15 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                       title="Delete project"
                     >
                       −
+                    </button>
+                    {/* Collapse triangle — rightmost, dark grey */}
+                    <button
+                      type="button"
+                      onClick={() => toggleProjectCollapse(project.id)}
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px] leading-none text-zinc-500 transition-colors hover:bg-zinc-200/80 hover:text-zinc-700"
+                      title={isCollapsed ? "Show tasks" : "Hide tasks"}
+                    >
+                      {isCollapsed ? "\u25B6" : "\u25BC"}
                     </button>
                   </div>
                 </div>
