@@ -78,6 +78,24 @@ function approximateLabelWidthPx(text: string, fontSizePx: number): number {
   return text.length * fontSizePx * 0.52;
 }
 
+function DependentTaskArrowIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 3v9a3 3 0 0 0 3 3h11" />
+      <path d="m14 11 4 4-4 4" />
+    </svg>
+  );
+}
+
 export default function GanttScheduler({ projects, tasks, assignedOptions, onAddProject, onDeleteProject, onUpdateTaskDates, onUpdateTask, onDeleteTask, onAddTask }: GanttSchedulerProps) {
   const options = assignedOptions ?? ASSIGNED_OPTIONS;
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
@@ -807,7 +825,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                             className="truncate text-[10px] font-medium leading-tight text-zinc-900"
                             style={{ paddingLeft: depth > 0 ? depth * 10 : 0 }}
                           >
-                            {task.dependency ? <span className="mr-1 align-middle">↘</span> : null}
+                            {task.dependency ? (
+                              <DependentTaskArrowIcon className="mr-1 inline-block h-3.5 w-3.5 align-middle text-slate-700" />
+                            ) : null}
                             {task.title}
                           </p>
                         </div>
