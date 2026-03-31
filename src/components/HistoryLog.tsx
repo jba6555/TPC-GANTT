@@ -88,6 +88,25 @@ export default function HistoryLog({ entries, onRevert }: HistoryLogProps) {
   const [revertingId, setRevertingId] = useState<string | null>(null);
   const [revertError, setRevertError] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [actionFilter, setActionFilter] = useState<string>("all");
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredEntries = entries.filter((entry) => {
+    if (actionFilter !== "all" && entry.action !== actionFilter) return false;
+    if (!normalizedQuery) return true;
+    const haystack = [
+      entry.description,
+      entry.projectName,
+      entry.userEmail,
+      entry.entityId,
+      ACTION_LABELS[entry.action]?.label,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
 
   async function handleRevert(entry: ChangelogEntry) {
     setRevertError(null);
@@ -106,8 +125,19 @@ export default function HistoryLog({ entries, onRevert }: HistoryLogProps) {
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="mb-3 h-10 w-10 text-zinc-300">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+          className="mb-3 h-10 w-10 text-zinc-300"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+          />
         </svg>
         <p className="text-sm text-zinc-500">No history yet</p>
         <p className="text-xs text-zinc-400">Changes will appear here as they happen</p>
@@ -116,8 +146,43 @@ export default function HistoryLog({ entries, onRevert }: HistoryLogProps) {
   }
 
   return (
-    <div className="space-y-1">
-      {entries.map((entry) => {
+    <div className="space-y-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex-1">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search history by task, project, user, or description…"
+            className="w-full rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-900 placeholder:text-zinc-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] text-zinc-500">Filter</label>
+          <select
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+            className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="all">All actions</option>
+            <option value="create_project">Created project</option>
+            <option value="update_project">Updated project</option>
+            <option value="delete_project">Deleted project</option>
+            <option value="create_task">Created task</option>
+            <option value="update_task">Updated task</option>
+            <option value="delete_tasks">Deleted tasks</option>
+            <option value="bulk_import">Bulk import</option>
+          </select>
+        </div>
+      </div>
+
+      {filteredEntries.length === 0 && (
+        <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 px-3 py-4 text-center text-xs text-zinc-500">
+          No history matches your current filters.
+        </div>
+      )}
+
+      {filteredEntries.map((entry) => {
         const meta = ACTION_LABELS[entry.action] ?? { label: entry.action, color: "text-zinc-700 bg-zinc-50 border-zinc-200", icon: "?" };
         const isExpanded = expandedId === entry.id;
         const isReverted = entry.description.startsWith("Reverted:");

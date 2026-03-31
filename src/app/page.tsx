@@ -289,8 +289,6 @@ export default function Home() {
   }
 
   async function handleUpdateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
-    // eslint-disable-next-line no-console
-    console.log("[Timeline] handleUpdateTaskDates", { taskId, startDate, dueDate });
     const t = allTasks.find((x) => x.id === taskId);
 
     // Write history FIRST — updateTaskDates calls getDoc which can hang when the
@@ -311,10 +309,7 @@ export default function Home() {
             dueDate: dueDate !== undefined ? dueDate : t.dueDate,
           },
         });
-        // eslint-disable-next-line no-console
-        console.log("[Changelog] timeline date log succeeded");
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error("[Changelog] timeline date log failed:", e);
       }
     }
@@ -340,8 +335,6 @@ export default function Home() {
       Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "milestoneImportance">
     >,
   ) {
-    // eslint-disable-next-line no-console
-    console.log("[Timeline] handleUpdateTask", { taskId, fields });
     const t = allTasks.find((x) => x.id === taskId);
 
     // Write history FIRST (same reason as handleUpdateTaskDates).
@@ -367,10 +360,7 @@ export default function Home() {
           },
           after: { ...fields },
         });
-        // eslint-disable-next-line no-console
-        console.log("[Changelog] timeline field log succeeded");
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error("[Changelog] timeline field log failed:", e);
       }
     }
