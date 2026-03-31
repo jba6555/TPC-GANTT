@@ -86,11 +86,11 @@ function DependentTaskArrowIcon({ className = "" }: { className?: string }) {
       className={className}
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.2"
+      strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M4 3v9a3 3 0 0 0 3 3h11" />
+      <path d="M4 4v6a3 3 0 0 0 3 3h11" />
       <path d="m14 11 4 4-4 4" />
     </svg>
   );
