@@ -990,36 +990,35 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                     return (
                       <div
                         key={task.id}
-                        className="flex w-full cursor-pointer items-center overflow-hidden border-b border-zinc-100 bg-white px-2 transition-colors hover:bg-zinc-50"
+                        className="flex w-full items-center overflow-hidden border-b border-zinc-100 bg-white transition-colors hover:bg-zinc-50"
                         style={{ height: TASK_ROW_H }}
-                        onClick={() => openTaskEditor(task)}
-                        role="button"
-                        tabIndex={0}
-                        title={task.title}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openTaskEditor(task); }}
                       >
+                        {/* Star: its own button — no nesting, no stopPropagation needed */}
                         <button
                           type="button"
                           aria-label={isMajorMilestone(task) ? "Major milestone – click to make minor" : "Minor milestone – click to make major"}
                           title={isMajorMilestone(task) ? "Major milestone – click to make minor" : "Minor milestone – click to make major"}
-                          className={`mr-1 shrink-0 cursor-pointer text-[8px] leading-none transition-opacity hover:opacity-60 ${isMajorMilestone(task) ? "text-amber-400" : "text-zinc-300"}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
+                          className={`flex shrink-0 cursor-pointer items-center justify-center px-1.5 py-1 text-[8px] leading-none transition-opacity hover:opacity-60 ${isMajorMilestone(task) ? "text-amber-400" : "text-zinc-300"}`}
+                          onClick={() => {
                             const next: MilestoneImportance = isMajorMilestone(task) ? "minor" : "major";
                             void onUpdateTask(task.id, { milestoneImportance: next });
                           }}
                         >
                           ★
                         </button>
-                        <p
-                          className="min-w-0 flex-1 truncate text-right text-[10px] font-medium leading-tight text-zinc-900"
+                        {/* Title: its own button — opens task editor */}
+                        <button
+                          type="button"
+                          title={task.title}
+                          onClick={() => openTaskEditor(task)}
+                          className="min-w-0 flex-1 cursor-pointer truncate pr-2 text-right text-[10px] font-medium leading-tight text-zinc-900"
                           style={{ paddingLeft: depth > 0 ? depth * 10 : 0 }}
                         >
                           {task.dependency ? (
                             <DependentTaskArrowIcon className="mr-1 inline-block h-3.5 w-3.5 align-middle text-slate-700" />
                           ) : null}
                           {task.title}
-                        </p>
+                        </button>
                       </div>
                     );
                   })}
