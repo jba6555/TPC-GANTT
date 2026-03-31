@@ -1580,19 +1580,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 // Dependency updates are handled via the dependency editor and server logic.
                 void onUpdateTask(notesTask.id, fields)
                   .then(() => {
-                    setNotesTask((prev) => {
-                      if (!prev || prev.id !== notesTask.id) return prev;
-                      return {
-                        ...prev,
-                        title: editTitle.trim(),
-                        startDate: editStartDate,
-                        dueDate: editDueDate,
-                        notes: editNotes,
-                        assignedTo: editAssignedTo,
-                        status: editStatus,
-                        milestoneImportance: editMilestoneImportance,
-                      };
-                    });
+                    setNotesTask(null);
                   })
                   .catch((err: unknown) => {
                     const message =
@@ -1733,11 +1721,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 const confirmed = window.confirm("Are you sure you want to delete this task?");
                 if (!confirmed) return;
                 setEditError(null);
+                setNotesTask(null);
                 setEditSaving(true);
                 void onDeleteTask(notesTask.id)
-                  .then(() => {
-                    setNotesTask(null);
-                  })
                   .catch((err: unknown) => {
                     const message =
                       err && typeof err === "object" && "message" in err
