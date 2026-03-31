@@ -340,6 +340,12 @@ export async function updateTaskDates(
   const knownProjectId = hint?.projectId;
   if (knownProjectId) {
     void recomputeAndApplyDependentTasks(db, knownProjectId, taskId);
+  } else {
+    void getDoc(taskRef).then((snap) => {
+      if (!snap.exists()) return;
+      const pid = snap.data().projectId as string | undefined;
+      if (pid) void recomputeAndApplyDependentTasks(db, pid, taskId);
+    });
   }
 }
 
