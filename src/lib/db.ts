@@ -132,13 +132,16 @@ async function logChange(entry: {
 }
 
 export function subscribeToProjects(
-  callback: (projects: Project[]) => void,
+  callback: (projects: Project[], fromCache: boolean) => void,
   onError?: (error: Error) => void,
 ) {
   const projectsCollection = projectsCollectionRef();
   // Full collection + client sort avoids Firestore index requirements for orderBy.
+  // includeMetadataChanges lets us detect when the server sync completes even if
+  // the data itself hasn't changed (e.g. new user with empty cache → server confirms empty).
   return onSnapshot(
     projectsCollection,
+    { includeMetadataChanges: true },
     (snapshot) => {
       const projects = snapshot.docs
         .map((projectDoc) => {
@@ -160,7 +163,7 @@ export function subscribeToProjects(
           void _createdMs;
           return rest as Project;
         });
-      callback(projects);
+      callback(projects, snapshot.metadata.fromCache);
     },
     (error) => {
       console.error("[Firestore] projects listener:", error);

@@ -62,6 +62,7 @@ export default function Home() {
   /** Set when Firestore rejects a changelog write (timeline still updates). */
   const [changelogWriteWarning, setChangelogWriteWarning] = useState<string | null>(null);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
+  const [projectsServerSynced, setProjectsServerSynced] = useState(false);
   const [historyTestStatus, setHistoryTestStatus] = useState<string | null>(null);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
   const [appTitle, setAppTitle] = useState(DEFAULT_TITLE);
@@ -126,13 +127,16 @@ export default function Home() {
 
   useEffect(() => {
     if (!authReady || !userId) return;
+    setProjectsServerSynced(false);
     const unsubscribe = subscribeToProjects(
-      (incoming) => {
+      (incoming, fromCache) => {
         setProjects(incoming.filter((p) => !deletingProjectIdsRef.current.has(p.id)));
         setDataLoadError(null);
+        if (!fromCache) setProjectsServerSynced(true);
       },
       (err) => {
         console.error("[page] projects subscription error:", err);
+        setProjectsServerSynced(true);
         const code = (err as { code?: string }).code ?? "";
         if (/permission|insufficient/i.test(code) || /permission|insufficient/i.test(err.message)) {
           setDataLoadError("permission-denied");
@@ -690,7 +694,16 @@ export default function Home() {
       )}
 
       <section className="min-w-0 space-y-3">
-          {dataLoadError === null && projects.length === 0 && (
+          {dataLoadError === null && !projectsServerSynced && projects.length === 0 && (
+            <div className="rounded-lg border border-zinc-200 bg-white p-3 flex items-center gap-2 text-sm text-zinc-500">
+              <svg className="h-4 w-4 animate-spin text-zinc-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              Loading projects…
+            </div>
+          )}
+          {dataLoadError === null && projectsServerSynced && projects.length === 0 && (
             <div className="rounded-lg border border-zinc-200 bg-white p-3">
               <h2 className="text-lg font-semibold text-zinc-900">No projects yet</h2>
               <div className="flex flex-wrap items-center gap-2">
