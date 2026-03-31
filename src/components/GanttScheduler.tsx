@@ -775,7 +775,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const todayPx = dayjs().diff(chartStart, "day") * pxPerDay;
 
   return (
-    <section className="min-w-0 flex flex-col rounded-lg border border-zinc-200 bg-white p-3" style={{ maxHeight: "calc(100vh - 140px)" }}>
+    <section className="min-w-0 flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white p-3" style={{ maxHeight: "calc(100vh - 140px)" }}>
 
       {/* ── FROZEN HEADER — never scrolls ── */}
       <div className="flex-shrink-0">
@@ -891,7 +891,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
       </div>
 
       {/* ── SCROLLABLE BODY — projects + task rows scroll here ── */}
-      <div className="flex min-w-0 flex-1 overflow-y-auto">
+      <div className="flex min-w-0 flex-1 min-h-0 overflow-y-auto">
         <div
           className="shrink-0 border-r border-zinc-200 bg-white"
           style={{ width: LABEL_WIDTH }}
