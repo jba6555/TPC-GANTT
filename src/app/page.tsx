@@ -10,7 +10,6 @@ import AssignedToManager from "@/components/AssignedToManager";
 import UserManager from "@/components/UserManager";
 import CsvBulkUpload from "@/components/CsvBulkUpload";
 import { isEmailAllowlisted } from "@/lib/allowedUsers";
-import { deleteTaskFromGoogleCalendar, syncTaskToGoogleCalendar } from "@/lib/calendarClient";
 import {
   createProject,
   createTask,
@@ -238,12 +237,6 @@ export default function Home() {
     setAllTasks((prev) => prev.filter((t) => t.projectId !== projectId));
 
     try {
-      for (const t of tasks) {
-        await deleteTaskFromGoogleCalendar({
-          taskId: t.id,
-          googleCalendarEventId: t.googleCalendarEventId,
-        });
-      }
       await deleteProjectAndTasks(projectId, actor, { project, tasks });
       window.setTimeout(() => {
         deletingProjectIdsRef.current.delete(projectId);
@@ -278,7 +271,7 @@ export default function Home() {
     const projectName = projects.find((p) => p.id === projectId)?.name ?? "";
     const startDate = input.startDate || date;
     const dueDate = input.dueDate || date;
-    const taskId = await createTask(
+    await createTask(
       projectId,
       {
         title: input.title,
@@ -293,18 +286,6 @@ export default function Home() {
       sortOrder,
       { ...actor, projectName },
     );
-    await syncTaskToGoogleCalendar({
-      taskId,
-      projectName,
-      task: {
-        title: input.title,
-        type: "task",
-        startDate,
-        dueDate,
-        notes: input.notes,
-        assignedTo: (input.assignedTo as AssignedTo) || undefined,
-      },
-    });
   }
 
   async function handleUpdateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
@@ -340,16 +321,6 @@ export default function Home() {
       // eslint-disable-next-line no-console
       console.error("[Changelog] timeline date log failed:", e);
     }
-    // Calendar sync is best-effort; do not fail the timeline update if it errors.
-    void syncTaskToGoogleCalendar({
-      taskId,
-      projectName,
-      task: {
-        ...t,
-        startDate: startDate !== undefined ? startDate : t.startDate,
-        dueDate: dueDate !== undefined ? dueDate : t.dueDate,
-      },
-    });
   }
 
   async function handleUpdateTask(
@@ -394,122 +365,14 @@ export default function Home() {
       // eslint-disable-next-line no-console
       console.error("[Changelog] timeline field log failed:", e);
     }
-    // Calendar sync is best-effort; do not fail the edit save if it errors.
-    void syncTaskToGoogleCalendar({
-      taskId,
-      projectName,
-      task: {
-        title: merged.title,
-        type: merged.type,
-        startDate: merged.startDate,
-        dueDate: merged.dueDate,
-        notes: merged.notes,
-        assignedTo: merged.assignedTo,
-        googleCalendarEventId: merged.googleCalendarEventId,
-      },
-    });
   }
 
   async function handleDeleteTask(taskId: string) {
-    const task = allTasks.find((t) => t.id === taskId);
-    await deleteTaskFromGoogleCalendar({
-      taskId,
-      googleCalendarEventId: task?.googleCalendarEventId,
-    });
     await deleteTask(taskId, actor);
   }
 
   async function handleRevertChange(entry: ChangelogEntry) {
-    const taskForCalendarId =
-      entry.action === "update_task" && entry.entityId
-        ? allTasks.find((x) => x.id === entry.entityId)
-        : undefined;
-
-    if (entry.action === "create_project" && entry.entityId) {
-      for (const t of allTasks.filter((x) => x.projectId === entry.entityId)) {
-        await deleteTaskFromGoogleCalendar({
-          taskId: t.id,
-          googleCalendarEventId: t.googleCalendarEventId,
-        });
-      }
-    } else if (entry.action === "create_task") {
-      const t = allTasks.find((x) => x.id === entry.entityId);
-      if (t) {
-        await deleteTaskFromGoogleCalendar({
-          taskId: t.id,
-          googleCalendarEventId: t.googleCalendarEventId,
-        });
-      }
-    }
-
     await revertChange(entry, actor);
-
-    if (entry.action === "delete_project" && entry.before) {
-      const snapshot = entry.before as { project: Record<string, unknown> | null; tasks: Record<string, unknown>[] };
-      const name = (snapshot.project?.name as string) ?? "";
-      for (const raw of snapshot.tasks ?? []) {
-        const task = raw as Record<string, unknown>;
-        const taskId = task.id as string;
-        if (!taskId) continue;
-        await syncTaskToGoogleCalendar({
-          taskId,
-          projectName: name,
-          task: {
-            title: (task.title as string) ?? "",
-            type: task.type === "milestone" ? "milestone" : "task",
-            startDate: task.startDate as string | undefined,
-            dueDate: (task.dueDate as string) ?? "",
-            notes: task.notes as string | undefined,
-            assignedTo: task.assignedTo as string | undefined,
-            googleCalendarEventId: task.googleCalendarEventId as string | undefined,
-          },
-        });
-      }
-    } else if (entry.action === "delete_tasks" && entry.before) {
-      const tasksArr = Array.isArray(entry.before)
-        ? (entry.before as Record<string, unknown>[])
-        : ((entry.before as { tasks?: Record<string, unknown>[] }).tasks ?? []);
-      for (const raw of tasksArr) {
-        const task = raw as Record<string, unknown>;
-        const taskId = task.id as string;
-        const projectId = task.projectId as string | undefined;
-        if (!taskId) continue;
-        const name = projectId ? (projects.find((p) => p.id === projectId)?.name ?? "") : "";
-        await syncTaskToGoogleCalendar({
-          taskId,
-          projectName: name,
-          task: {
-            title: (task.title as string) ?? "",
-            type: task.type === "milestone" ? "milestone" : "task",
-            startDate: task.startDate as string | undefined,
-            dueDate: (task.dueDate as string) ?? "",
-            notes: task.notes as string | undefined,
-            assignedTo: task.assignedTo as string | undefined,
-            googleCalendarEventId: task.googleCalendarEventId as string | undefined,
-          },
-        });
-      }
-    } else if (entry.action === "update_task" && entry.before && entry.entityId) {
-      const before = entry.before as Record<string, unknown>;
-      const projectId = (before.projectId as string | undefined) ?? taskForCalendarId?.projectId;
-      const name =
-        (entry.projectName?.trim() && entry.projectName) ||
-        (projectId ? (projects.find((p) => p.id === projectId)?.name ?? "") : "");
-      await syncTaskToGoogleCalendar({
-        taskId: entry.entityId,
-        projectName: name,
-        task: {
-          title: (before.title as string) ?? "",
-          type: before.type === "milestone" ? "milestone" : "task",
-          startDate: before.startDate as string | undefined,
-          dueDate: (before.dueDate as string) ?? "",
-          notes: before.notes as string | undefined,
-          assignedTo: before.assignedTo as string | undefined,
-          googleCalendarEventId:
-            (before.googleCalendarEventId as string | undefined) ?? taskForCalendarId?.googleCalendarEventId,
-        },
-      });
-    }
   }
 
   async function handleSignOut() {
@@ -568,7 +431,7 @@ export default function Home() {
       const assignedTo: AssignedTo | undefined = row.assignedTo?.trim() || undefined;
       const sortOrder = taskCountByProjectId.get(projectId) ?? 0;
       const projectName = row.projectName.trim();
-      const taskId = await createTask(
+      await createTask(
         projectId,
         {
           title: row.taskTitle.trim(),
@@ -581,18 +444,6 @@ export default function Home() {
         sortOrder,
         { ...actor, projectName },
       );
-      await syncTaskToGoogleCalendar({
-        taskId,
-        projectName,
-        task: {
-          title: row.taskTitle.trim(),
-          type: taskType,
-          startDate,
-          dueDate,
-          notes: row.taskNotes?.trim() || undefined,
-          assignedTo,
-        },
-      });
       taskCountByProjectId.set(projectId, sortOrder + 1);
       createdTasks += 1;
     }
@@ -609,36 +460,10 @@ export default function Home() {
       contractStart: "2026-03-13",
       contractEnd: "2027-01-01",
     }, userEmail);
-    const seedName = "3217 Rowena Ave";
-    const seedTasks: Array<{
-      id: string;
-      task: {
-        title: string;
-        type: ProjectTask["type"];
-        startDate?: string;
-        dueDate: string;
-      };
-    }> = [
-      {
-        id: await createTask(projectId, { title: "Pre-Application due", type: "milestone", dueDate: "2026-05-01" }, 0, seedActor),
-        task: { title: "Pre-Application due", type: "milestone", dueDate: "2026-05-01" },
-      },
-      {
-        id: await createTask(projectId, { title: "Full Application due", type: "milestone", dueDate: "2026-05-15" }, 1, seedActor),
-        task: { title: "Full Application due", type: "milestone", dueDate: "2026-05-15" },
-      },
-      {
-        id: await createTask(projectId, { title: "Under Contract", type: "task", startDate: "2026-03-13", dueDate: "2027-01-01" }, 2, seedActor),
-        task: { title: "Under Contract", type: "task", startDate: "2026-03-13", dueDate: "2027-01-01" },
-      },
-      {
-        id: await createTask(projectId, { title: "Meeting with NCHFA", type: "milestone", dueDate: "2026-06-01" }, 3, seedActor),
-        task: { title: "Meeting with NCHFA", type: "milestone", dueDate: "2026-06-01" },
-      },
-    ];
-    for (const row of seedTasks) {
-      await syncTaskToGoogleCalendar({ taskId: row.id, projectName: seedName, task: row.task });
-    }
+    await createTask(projectId, { title: "Pre-Application due", type: "milestone", dueDate: "2026-05-01" }, 0, seedActor);
+    await createTask(projectId, { title: "Full Application due", type: "milestone", dueDate: "2026-05-15" }, 1, seedActor);
+    await createTask(projectId, { title: "Under Contract", type: "task", startDate: "2026-03-13", dueDate: "2027-01-01" }, 2, seedActor);
+    await createTask(projectId, { title: "Meeting with NCHFA", type: "milestone", dueDate: "2026-06-01" }, 3, seedActor);
   }
 
   if (!authReady) {
