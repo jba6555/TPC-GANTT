@@ -17,6 +17,7 @@ import {
   deleteProjectAndTasks,
   deleteTask,
   fetchChangelogFromServer,
+  logTimelineChangeFromClient,
   revertChange,
   saveAllowedUsers,
   saveAssignedOptions,
@@ -269,6 +270,7 @@ export default function Home() {
       notes?: string;
       assignedTo?: string;
       dependency?: import("@/types/scheduler").TaskDependency;
+      milestoneImportance?: import("@/types/scheduler").MilestoneImportance;
     },
   ) {
     const date = input.startDate || input.dueDate || dayjs().format("YYYY-MM-DD");
@@ -286,6 +288,7 @@ export default function Home() {
         notes: input.notes,
         assignedTo: (input.assignedTo as import("@/types/scheduler").AssignedTo) || undefined,
         dependency: input.dependency,
+        milestoneImportance: input.milestoneImportance,
       },
       sortOrder,
       { ...actor, projectName },
@@ -312,6 +315,21 @@ export default function Home() {
     const t = allTasks.find((x) => x.id === taskId);
     if (!t) return;
     const projectName = projects.find((p) => p.id === t.projectId)?.name ?? "";
+
+    // Log history directly from the client using known before/after values.
+    void logTimelineChangeFromClient({
+      actor,
+      action: "update_task",
+      entityType: "task",
+      entityId: taskId,
+      projectName,
+      description: `Updated dates on "${t.title}"`,
+      before: { startDate: t.startDate, dueDate: t.dueDate },
+      after: {
+        startDate: startDate !== undefined ? startDate : t.startDate,
+        dueDate: dueDate !== undefined ? dueDate : t.dueDate,
+      },
+    });
     // Calendar sync is best-effort; do not fail the timeline update if it errors.
     void syncTaskToGoogleCalendar({
       taskId,
@@ -337,6 +355,25 @@ export default function Home() {
     if (!t) return;
     const merged: ProjectTask = { ...t, ...fields };
     const projectName = projects.find((p) => p.id === merged.projectId)?.name ?? "";
+
+    void logTimelineChangeFromClient({
+      actor,
+      action: "update_task",
+      entityType: "task",
+      entityId: taskId,
+      projectName,
+      description: `Updated "${merged.title}"`,
+      before: {
+        title: t.title,
+        startDate: t.startDate,
+        dueDate: t.dueDate,
+        notes: t.notes,
+        assignedTo: t.assignedTo,
+        status: t.status,
+        milestoneImportance: t.milestoneImportance,
+      },
+      after: { ...fields },
+    });
     // Calendar sync is best-effort; do not fail the edit save if it errors.
     void syncTaskToGoogleCalendar({
       taskId,

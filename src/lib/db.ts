@@ -844,6 +844,34 @@ export async function fetchChangelogFromServer(maxEntries = 200): Promise<Change
   return mapChangelogSnapshotDocs(snapshot, maxEntries);
 }
 
+/** Direct client-side helper for logging timeline changes when we already know before/after. */
+export async function logTimelineChangeFromClient(params: {
+  actor: { userId: string; userEmail: string };
+  action: ChangeAction;
+  entityType: "project" | "task";
+  entityId: string;
+  projectName?: string;
+  description: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}) {
+  const payload: Record<string, unknown> = {
+    userId: params.actor.userId,
+    userEmail: params.actor.userEmail,
+    action: params.action,
+    entityType: params.entityType,
+    entityId: params.entityId,
+    description: params.description,
+    before: sanitizeChangelogSnapshot(params.before),
+    after: sanitizeChangelogSnapshot(params.after),
+    timestamp: serverTimestamp(),
+  };
+  if (params.projectName) {
+    payload.projectName = params.projectName;
+  }
+  await addDoc(changelogCollectionRef(), payload);
+}
+
 /** Debug helper: attempt to write a changelog entry from the client. */
 export async function writeTestChangelogEntry(actor: { userId: string; userEmail: string }) {
   const payload: Record<string, unknown> = {
