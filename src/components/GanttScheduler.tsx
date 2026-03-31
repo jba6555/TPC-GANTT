@@ -113,6 +113,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const headerTimelineRef = useRef<HTMLDivElement | null>(null);
   /** True after pointer moved enough to count as a drag (move/resize). Used so click can open notes after a tap. */
   const dragOccurredRef = useRef(false);
   const [zoom, setZoom] = useState<ZoomLevel>("week");
@@ -220,6 +221,16 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);
+
+  // Mirror horizontal scroll from the body timeline into the frozen header timeline.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const header = headerTimelineRef.current;
+    if (!viewport || !header) return;
+    const sync = () => { header.scrollLeft = viewport.scrollLeft; };
+    viewport.addEventListener("scroll", sync, { passive: true });
+    return () => viewport.removeEventListener("scroll", sync);
+  });
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -774,18 +785,18 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
         </div>
       )}
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            setProjectSaveError(null);
-            setNewProjectName("");
-            setProjectModalOpen(true);
-          }}
-          className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-        >
-          + Project
-        </button>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setProjectSaveError(null);
+              setNewProjectName("");
+              setProjectModalOpen(true);
+            }}
+            className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            + Project
+          </button>
           <button
             type="button"
             onClick={() => setShowMajorOnlyGlobal((prev) => !prev)}
@@ -798,8 +809,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
             aria-pressed={showMajorOnlyGlobal}
           >
             <span className="text-[11px]">★</span>
-            <span>{showMajorOnlyGlobal ? "Major only" : "All tasks"}</span>
+            <span>Major</span>
           </button>
+        </div>
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
           {(["week", "month", "6month", "year"] as ZoomLevel[]).map((level) => {
             const label = ZOOM_LEVELS.find((z) => z.key === level)!.label;
