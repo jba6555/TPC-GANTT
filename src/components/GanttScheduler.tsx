@@ -152,8 +152,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     setEditAssignedTo(task.assignedTo || "");
     setEditStatus(task.status);
     setEditDependency(task.dependency);
-    const inferredImportance: MilestoneImportance =
-      task.milestoneImportance ?? (task.type === "milestone" ? "major" : "minor");
+    const inferredImportance: MilestoneImportance = task.milestoneImportance ?? "major";
     setEditMilestoneImportance(inferredImportance);
     setEditError(null);
   }, []);
@@ -606,8 +605,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   }, [tasks]);
 
   function isMajorMilestone(task: ProjectTask): boolean {
-    const importance: MilestoneImportance =
-      task.milestoneImportance ?? (task.type === "milestone" ? "major" : "minor");
+    const importance: MilestoneImportance = task.milestoneImportance ?? "major";
     return task.type === "milestone" && importance === "major";
   }
 
