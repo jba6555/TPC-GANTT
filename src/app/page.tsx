@@ -43,7 +43,7 @@ import type {
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v12";
+  const APP_VERSION = "frozen-col-v13";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
