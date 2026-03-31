@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AssignedOption,
   AssignedTo,
+  MilestoneImportance,
   Project,
   ProjectInput,
   ProjectTask,
@@ -22,7 +23,9 @@ interface GanttSchedulerProps {
   onUpdateTaskDates: (taskId: string, startDate?: string, dueDate?: string) => Promise<void>;
   onUpdateTask: (
     taskId: string,
-    fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
+    fields: Partial<
+      Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "milestoneImportance">
+    >,
   ) => Promise<void>;
   onDeleteTask?: (taskId: string) => Promise<void>;
   onAddTask?: (
@@ -88,6 +91,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [editAssignedTo, setEditAssignedTo] = useState<AssignedTo>("");
   const [editStatus, setEditStatus] = useState<ProjectTask["status"]>("not_started");
   const [editDependency, setEditDependency] = useState<TaskDependency | undefined>(undefined);
+  const [editMilestoneImportance, setEditMilestoneImportance] = useState<MilestoneImportance>("major");
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -106,6 +110,8 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [taskDependencyParentId, setTaskDependencyParentId] = useState<string>("");
   const [taskDependencyType, setTaskDependencyType] = useState<TaskDependencyType>("FS");
   const [taskDependencyOffsetDays, setTaskDependencyOffsetDays] = useState<number>(0);
+  const [taskDurationDays, setTaskDurationDays] = useState<number | "">("");
+  const [taskMilestoneImportance, setTaskMilestoneImportance] = useState<MilestoneImportance>("major");
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
@@ -122,6 +128,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     setEditAssignedTo(task.assignedTo || "");
     setEditStatus(task.status);
     setEditDependency(task.dependency);
+    const inferredImportance: MilestoneImportance =
+      task.milestoneImportance ?? (task.type === "milestone" ? "major" : "minor");
+    setEditMilestoneImportance(inferredImportance);
     setEditError(null);
   }, []);
 
@@ -157,6 +166,30 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
       return prev;
     });
   }, []);
+
+  // Restore last-used zoom level from localStorage.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem("scheduler-zoom");
+      if (!stored) return;
+      if (ZOOM_KEYS.includes(stored as ZoomLevel)) {
+        setZoom(stored as ZoomLevel);
+      }
+    } catch {
+      // Ignore storage errors and fall back to default.
+    }
+  }, []);
+
+  // Persist zoom level when it changes.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("scheduler-zoom", zoom);
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [zoom]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -1064,62 +1097,6 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-700">Start Date</label>
-                  <input
-                    type="date"
-                    value={taskStartDate}
-                    onChange={(e) => setTaskStartDate(e.target.value)}
-                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-700">Complete Date</label>
-                  <input
-                    type="date"
-                    value={taskDueDate}
-                    onChange={(e) => setTaskDueDate(e.target.value)}
-                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-zinc-700">Assigned To</label>
-                <select
-                  value={taskAssignedTo}
-                  onChange={(e) => setTaskAssignedTo(e.target.value as AssignedTo)}
-                  className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
-                >
-                  {options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label || "(none)"}
-                    </option>
-                  ))}
-                </select>
-                {taskAssignedTo && (
-                  <div className="flex items-center gap-1.5 pt-0.5">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: options.find((o) => o.value === taskAssignedTo)?.color }}
-                    />
-                    <span className="text-xs text-zinc-500">Bar color preview</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-zinc-700">Notes</label>
-                <textarea
-                  value={taskNotes}
-                  onChange={(e) => setTaskNotes(e.target.value)}
-                  placeholder="Optional notes"
-                  className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
-                  rows={3}
-                />
-              </div>
-
               <div className="space-y-1">
                 <label className="flex items-center gap-2 text-sm font-medium text-zinc-700">
                   <input
@@ -1170,11 +1147,105 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         />
                       </div>
                     </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-zinc-700">Duration (days from start)</label>
+                      <input
+                        type="number"
+                        value={taskDurationDays}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") {
+                            setTaskDurationDays("");
+                            return;
+                          }
+                          const n = Number(raw);
+                          if (Number.isNaN(n) || n <= 0) {
+                            setTaskDurationDays("");
+                            return;
+                          }
+                          setTaskDurationDays(n);
+                          if (taskStartDate) {
+                            const start = dayjs(taskStartDate);
+                            const due = start.add(n - 1, "day");
+                            setTaskDueDate(due.format("YYYY-MM-DD"));
+                          }
+                        }}
+                        className="w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+                      />
+                      <p className="text-[11px] text-zinc-600">
+                        Leave blank to set a fixed completion date below. When filled, the complete date will be
+                        {` calculated from the start date.`}
+                      </p>
+                    </div>
                     <p className="text-[11px] text-zinc-600">
                       Positive offsets place the task after the parent; negative offsets place it before.
                     </p>
                   </div>
                 )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-zinc-700">Start Date</label>
+                  <input
+                    type="date"
+                    value={taskStartDate}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setTaskStartDate(next);
+                      if (taskIsDependent && taskDurationDays && next) {
+                        const start = dayjs(next);
+                        const due = start.add(taskDurationDays - 1, "day");
+                        setTaskDueDate(due.format("YYYY-MM-DD"));
+                      }
+                    }}
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-zinc-700">Complete Date</label>
+                  <input
+                    type="date"
+                    value={taskDueDate}
+                    onChange={(e) => setTaskDueDate(e.target.value)}
+                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700">Assigned To</label>
+                <select
+                  value={taskAssignedTo}
+                  onChange={(e) => setTaskAssignedTo(e.target.value as AssignedTo)}
+                  className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
+                >
+                  {options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label || "(none)"}
+                    </option>
+                  ))}
+                </select>
+                {taskAssignedTo && (
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <div
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: options.find((o) => o.value === taskAssignedTo)?.color }}
+                    />
+                    <span className="text-xs text-zinc-500">Bar color preview</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700">Notes</label>
+                <textarea
+                  value={taskNotes}
+                  onChange={(e) => setTaskNotes(e.target.value)}
+                  placeholder="Optional notes"
+                  className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                  rows={3}
+                />
               </div>
 
               {taskError && <p className="text-xs text-red-600">{taskError}</p>}
