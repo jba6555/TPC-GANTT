@@ -289,7 +289,36 @@ export default function Home() {
   }
 
   async function handleUpdateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
+    // eslint-disable-next-line no-console
+    console.log("[Timeline] handleUpdateTaskDates", { taskId, startDate, dueDate });
     const t = allTasks.find((x) => x.id === taskId);
+
+    // Write history FIRST — updateTaskDates calls getDoc which can hang when the
+    // Firestore server is unreachable, and that would block changelog writes forever.
+    if (t) {
+      const projectName = projects.find((p) => p.id === t.projectId)?.name ?? "";
+      try {
+        await logTimelineChangeFromClient({
+          actor,
+          action: "update_task",
+          entityType: "task",
+          entityId: taskId,
+          projectName,
+          description: `Updated dates on "${t.title}"`,
+          before: { startDate: t.startDate, dueDate: t.dueDate },
+          after: {
+            startDate: startDate !== undefined ? startDate : t.startDate,
+            dueDate: dueDate !== undefined ? dueDate : t.dueDate,
+          },
+        });
+        // eslint-disable-next-line no-console
+        console.log("[Changelog] timeline date log succeeded");
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[Changelog] timeline date log failed:", e);
+      }
+    }
+
     let parentTask: { startDate?: string; dueDate?: string } | undefined;
     if (t?.dependency?.dependsOnTaskId) {
       const p = allTasks.find((x) => x.id === t.dependency!.dependsOnTaskId);
@@ -303,23 +332,6 @@ export default function Home() {
       oldStartDate: t?.startDate,
       oldDueDate: t?.dueDate,
     });
-
-    if (t) {
-      const projectName = projects.find((p) => p.id === t.projectId)?.name ?? "";
-      void logTimelineChangeFromClient({
-        actor,
-        action: "update_task",
-        entityType: "task",
-        entityId: taskId,
-        projectName,
-        description: `Updated dates on "${t.title}"`,
-        before: { startDate: t.startDate, dueDate: t.dueDate },
-        after: {
-          startDate: startDate !== undefined ? startDate : t.startDate,
-          dueDate: dueDate !== undefined ? dueDate : t.dueDate,
-        },
-      }).catch((e) => console.error("[Changelog] timeline date log failed:", e));
-    }
   }
 
   async function handleUpdateTask(
@@ -328,31 +340,42 @@ export default function Home() {
       Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "milestoneImportance">
     >,
   ) {
+    // eslint-disable-next-line no-console
+    console.log("[Timeline] handleUpdateTask", { taskId, fields });
     const t = allTasks.find((x) => x.id === taskId);
-    await updateTask(taskId, fields, undefined, { projectId: t?.projectId });
 
+    // Write history FIRST (same reason as handleUpdateTaskDates).
     if (t) {
       const merged = { ...t, ...fields };
       const projectName = projects.find((p) => p.id === merged.projectId)?.name ?? "";
-      void logTimelineChangeFromClient({
-        actor,
-        action: "update_task",
-        entityType: "task",
-        entityId: taskId,
-        projectName,
-        description: `Updated "${merged.title}"`,
-        before: {
-          title: t.title,
-          startDate: t.startDate,
-          dueDate: t.dueDate,
-          notes: t.notes,
-          assignedTo: t.assignedTo,
-          status: t.status,
-          milestoneImportance: t.milestoneImportance,
-        },
-        after: { ...fields },
-      }).catch((e) => console.error("[Changelog] timeline field log failed:", e));
+      try {
+        await logTimelineChangeFromClient({
+          actor,
+          action: "update_task",
+          entityType: "task",
+          entityId: taskId,
+          projectName,
+          description: `Updated "${merged.title}"`,
+          before: {
+            title: t.title,
+            startDate: t.startDate,
+            dueDate: t.dueDate,
+            notes: t.notes,
+            assignedTo: t.assignedTo,
+            status: t.status,
+            milestoneImportance: t.milestoneImportance,
+          },
+          after: { ...fields },
+        });
+        // eslint-disable-next-line no-console
+        console.log("[Changelog] timeline field log succeeded");
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[Changelog] timeline field log failed:", e);
+      }
     }
+
+    await updateTask(taskId, fields, undefined, { projectId: t?.projectId });
   }
 
   async function handleDeleteTask(taskId: string) {
