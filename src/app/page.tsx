@@ -289,17 +289,24 @@ export default function Home() {
   }
 
   async function handleUpdateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
-    // Debug: prove timeline date updates are firing with the expected payload.
-    // eslint-disable-next-line no-console
-    console.log("[Timeline] handleUpdateTaskDates", { taskId, startDate, dueDate });
-    await updateTaskDates(taskId, startDate, dueDate, actor);
     const t = allTasks.find((x) => x.id === taskId);
-    if (!t) return;
-    const projectName = projects.find((p) => p.id === t.projectId)?.name ?? "";
+    let parentTask: { startDate?: string; dueDate?: string } | undefined;
+    if (t?.dependency?.dependsOnTaskId) {
+      const p = allTasks.find((x) => x.id === t.dependency!.dependsOnTaskId);
+      if (p) parentTask = { startDate: p.startDate, dueDate: p.dueDate };
+    }
 
-    // Log history directly from the client using known before/after values.
-    try {
-      await logTimelineChangeFromClient({
+    await updateTaskDates(taskId, startDate, dueDate, actor, {
+      projectId: t?.projectId,
+      dependency: t?.dependency,
+      parentTask,
+      oldStartDate: t?.startDate,
+      oldDueDate: t?.dueDate,
+    });
+
+    if (t) {
+      const projectName = projects.find((p) => p.id === t.projectId)?.name ?? "";
+      void logTimelineChangeFromClient({
         actor,
         action: "update_task",
         entityType: "task",
@@ -311,15 +318,7 @@ export default function Home() {
           startDate: startDate !== undefined ? startDate : t.startDate,
           dueDate: dueDate !== undefined ? dueDate : t.dueDate,
         },
-      });
-      const entries = await fetchChangelogFromServer();
-      setChangelog(entries);
-      setChangelogWriteWarning(null);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setChangelogWriteWarning(`update_task (dates) · ${msg}`);
-      // eslint-disable-next-line no-console
-      console.error("[Changelog] timeline date log failed:", e);
+      }).catch((e) => console.error("[Changelog] timeline date log failed:", e));
     }
   }
 
@@ -329,16 +328,13 @@ export default function Home() {
       Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "milestoneImportance">
     >,
   ) {
-    // eslint-disable-next-line no-console
-    console.log("[Timeline] handleUpdateTask", { taskId, fields });
-    await updateTask(taskId, fields, actor);
     const t = allTasks.find((x) => x.id === taskId);
-    if (!t) return;
-    const merged: ProjectTask = { ...t, ...fields };
-    const projectName = projects.find((p) => p.id === merged.projectId)?.name ?? "";
+    await updateTask(taskId, fields, undefined, { projectId: t?.projectId });
 
-    try {
-      await logTimelineChangeFromClient({
+    if (t) {
+      const merged = { ...t, ...fields };
+      const projectName = projects.find((p) => p.id === merged.projectId)?.name ?? "";
+      void logTimelineChangeFromClient({
         actor,
         action: "update_task",
         entityType: "task",
@@ -355,20 +351,18 @@ export default function Home() {
           milestoneImportance: t.milestoneImportance,
         },
         after: { ...fields },
-      });
-      const entries = await fetchChangelogFromServer();
-      setChangelog(entries);
-      setChangelogWriteWarning(null);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setChangelogWriteWarning(`update_task (fields) · ${msg}`);
-      // eslint-disable-next-line no-console
-      console.error("[Changelog] timeline field log failed:", e);
+      }).catch((e) => console.error("[Changelog] timeline field log failed:", e));
     }
   }
 
   async function handleDeleteTask(taskId: string) {
-    await deleteTask(taskId, actor);
+    const t = allTasks.find((x) => x.id === taskId);
+    const projectName = t ? (projects.find((p) => p.id === t.projectId)?.name ?? "") : undefined;
+    await deleteTask(taskId, actor, {
+      projectId: t?.projectId,
+      taskTitle: t?.title,
+      projectName,
+    });
   }
 
   async function handleRevertChange(entry: ChangelogEntry) {
