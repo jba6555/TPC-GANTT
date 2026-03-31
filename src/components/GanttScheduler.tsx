@@ -17,13 +17,17 @@ interface GanttSchedulerProps {
     fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
   ) => Promise<void>;
   onDeleteTask?: (taskId: string) => Promise<void>;
-  onAddTask?: (projectId: string, input: {
-    title: string;
-    startDate?: string;
-    dueDate?: string;
-    notes?: string;
-    assignedTo?: string;
-  }) => Promise<void>;
+  onAddTask?: (
+    projectId: string,
+    input: {
+      title: string;
+      startDate?: string;
+      dueDate?: string;
+      notes?: string;
+      assignedTo?: string;
+      dependency?: import("@/types/scheduler").TaskDependency;
+    },
+  ) => Promise<void>;
 }
 
 type DragMode = "move" | "resizeStart" | "resizeEnd";
@@ -399,28 +403,52 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   }, [tasks]);
 
   const sortedProjects = useMemo(() => {
+    const todayKey = dayjs().format("YYYY-MM-DD");
+
     const withKey = projects.map((project) => {
       const projectTasks = tasksByProject.get(project.id) ?? [];
-      // Tasks already sorted nearest → farthest; first entry is the "next" task.
-      const nextTask = projectTasks[0];
+
+      let nextUpcoming: string | null = null;
+      let latestPast: string | null = null;
+
+      for (const task of projectTasks) {
+        const dateKey = task.startDate || task.dueDate;
+        if (!dateKey) continue;
+        if (dateKey >= todayKey) {
+          // Upcoming task: keep the soonest one.
+          if (!nextUpcoming || dateKey < nextUpcoming) nextUpcoming = dateKey;
+        } else {
+          // Past task: keep the most recent one.
+          if (!latestPast || dateKey > latestPast) latestPast = dateKey;
+        }
+      }
+
+      const hasUpcoming = !!nextUpcoming;
+      const sortKey = nextUpcoming ?? latestPast;
+
       return {
         project,
-        nextTaskDateKey: nextTask ? (nextTask.startDate || nextTask.dueDate) : null,
-        nextTaskDueDate: nextTask ? nextTask.dueDate : null,
+        hasUpcoming,
+        sortKey,
       };
     });
 
     withKey.sort((a, b) => {
-      const aHasDate = !!a.nextTaskDateKey;
-      const bHasDate = !!b.nextTaskDateKey;
-      if (aHasDate && !bHasDate) return -1;
-      if (!aHasDate && bHasDate) return 1;
-      if (aHasDate && bHasDate && a.nextTaskDateKey !== b.nextTaskDateKey) {
-        return a.nextTaskDateKey! < b.nextTaskDateKey! ? -1 : 1;
+      // Projects with an upcoming task come before projects with only past tasks (or no tasks).
+      if (a.hasUpcoming && !b.hasUpcoming) return -1;
+      if (!a.hasUpcoming && b.hasUpcoming) return 1;
+
+      // If both have the same upcoming/past state, compare by sortKey.
+      if (a.sortKey && b.sortKey && a.sortKey !== b.sortKey) {
+        if (a.hasUpcoming && b.hasUpcoming) {
+          // Both upcoming: earlier date first.
+          return a.sortKey < b.sortKey ? -1 : 1;
+        }
+        // Both past-only: more recent past first.
+        return a.sortKey > b.sortKey ? -1 : 1;
       }
-      if (a.nextTaskDueDate && b.nextTaskDueDate && a.nextTaskDueDate !== b.nextTaskDueDate) {
-        return a.nextTaskDueDate < b.nextTaskDueDate ? -1 : 1;
-      }
+
+      // Stable fallback: keep a deterministic order by name.
       return a.project.name.localeCompare(b.project.name);
     });
 
