@@ -606,7 +606,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
 
   function isMajorMilestone(task: ProjectTask): boolean {
     const importance: MilestoneImportance = task.milestoneImportance ?? "major";
-    return task.type === "milestone" && importance === "major";
+    return importance === "major";
   }
 
   function getVisibleTasksForProject(projectId: string): ProjectTask[] {
