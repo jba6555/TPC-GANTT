@@ -1,5 +1,16 @@
 export type TaskType = "milestone" | "task";
 
+export type MilestoneImportance = "major" | "minor";
+
+export type TaskDependencyType = "FS" | "SS" | "FF";
+
+export interface TaskDependency {
+  dependsOnTaskId: string;
+  type: TaskDependencyType;
+  /** Offset in whole days; positive = after, negative = before. */
+  offsetDays: number;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -39,6 +50,7 @@ export interface ProjectTask {
   projectId: string;
   title: string;
   type: TaskType;
+  milestoneImportance?: MilestoneImportance;
   startDate?: string;
   dueDate: string;
   status: "not_started" | "in_progress" | "complete";
@@ -47,6 +59,8 @@ export interface ProjectTask {
   assignedTo?: AssignedTo;
   /** Google Calendar event id when synced to the shared org calendar. */
   googleCalendarEventId?: string;
+  /** Optional dependency configuration for this task. */
+  dependency?: TaskDependency;
   updatedAt: string;
 }
 
@@ -60,10 +74,12 @@ export interface ProjectInput {
 export interface TaskInput {
   title: string;
   type: TaskType;
+  milestoneImportance?: MilestoneImportance;
   startDate?: string;
   dueDate: string;
   notes?: string;
   assignedTo?: AssignedTo;
+  dependency?: TaskDependency;
 }
 
 export interface BulkImportCsvRow {

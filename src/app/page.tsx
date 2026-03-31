@@ -268,6 +268,7 @@ export default function Home() {
       dueDate?: string;
       notes?: string;
       assignedTo?: string;
+      dependency?: import("@/types/scheduler").TaskDependency;
     },
   ) {
     const date = input.startDate || input.dueDate || dayjs().format("YYYY-MM-DD");
@@ -284,6 +285,7 @@ export default function Home() {
         dueDate,
         notes: input.notes,
         assignedTo: (input.assignedTo as import("@/types/scheduler").AssignedTo) || undefined,
+        dependency: input.dependency,
       },
       sortOrder,
       { ...actor, projectName },

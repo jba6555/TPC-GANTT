@@ -18,9 +18,19 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
-import type { AssignedOption, ChangeAction, ChangelogEntry, Project, ProjectInput, ProjectTask, TaskInput } from "@/types/scheduler";
+import type {
+  AssignedOption,
+  ChangeAction,
+  ChangelogEntry,
+  Project,
+  ProjectInput,
+  ProjectTask,
+  TaskDependency,
+  TaskInput,
+} from "@/types/scheduler";
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 import { mergeBuiltinAllowedEmails } from "@/lib/allowedUsers";
+import { computeDependentDates } from "@/lib/taskDependencies";
 
 function projectsCollectionRef() {
   return collection(getFirestoreDb(), "projects");
@@ -178,6 +188,7 @@ export function subscribeToTasks(
             notes: data.notes,
             assignedTo: data.assignedTo,
             googleCalendarEventId: data.googleCalendarEventId,
+            dependency: data.dependency,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
           } as ProjectTask;
         })
@@ -214,6 +225,7 @@ export function subscribeToAllTasks(
             notes: data.notes,
             assignedTo: data.assignedTo,
             googleCalendarEventId: data.googleCalendarEventId,
+            dependency: data.dependency,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
           } as ProjectTask;
         })
@@ -289,12 +301,24 @@ export async function updateTaskDates(
   let beforeData: Record<string, unknown> | null = null;
   let taskTitle = "task";
   let projectName: string | undefined;
-  if (actor) {
-    const snap = await getDoc(taskRef);
-    if (snap.exists()) {
-      const d = snap.data();
-      beforeData = { startDate: d.startDate, dueDate: d.dueDate };
-      taskTitle = d.title ?? "task";
+  let projectId: string | undefined;
+  let existingDependency: TaskDependency | undefined;
+  let parentForOffset: { startDate?: string; dueDate?: string } | undefined;
+  const snap = await getDoc(taskRef);
+  if (snap.exists()) {
+    const d = snap.data();
+    beforeData = { startDate: d.startDate, dueDate: d.dueDate };
+    taskTitle = d.title ?? "task";
+    projectId = d.projectId as string | undefined;
+    existingDependency = d.dependency as TaskDependency | undefined;
+    if (existingDependency?.dependsOnTaskId) {
+      const parentSnap = await getDoc(doc(db, "tasks", existingDependency.dependsOnTaskId));
+      if (parentSnap.exists()) {
+        const pd = parentSnap.data();
+        parentForOffset = { startDate: pd.startDate as string | undefined, dueDate: pd.dueDate as string | undefined };
+      }
+    }
+    if (actor) {
       const projSnap = await getDoc(doc(db, "projects", d.projectId ?? ""));
       projectName = projSnap.exists() ? (projSnap.data().name as string) : undefined;
     }
@@ -303,6 +327,29 @@ export async function updateTaskDates(
   const patch: Record<string, unknown> = { updatedAt: serverTimestamp() };
   if (startDate !== undefined) patch.startDate = startDate;
   if (dueDate !== undefined) patch.dueDate = dueDate;
+  if ((startDate !== undefined || dueDate !== undefined) && existingDependency && parentForOffset?.dueDate) {
+    const nextStart = startDate !== undefined ? startDate : (beforeData?.startDate as string | undefined);
+    const nextDue = dueDate !== undefined ? dueDate : (beforeData?.dueDate as string | undefined);
+    if (nextStart && nextDue) {
+      const parentStart = parentForOffset.startDate || parentForOffset.dueDate;
+      const parentEnd = parentForOffset.dueDate;
+      if (parentStart && parentEnd) {
+        const parentStartDate = (parentStart as string).slice(0, 10);
+        const parentEndDate = (parentEnd as string).slice(0, 10);
+        const childStartDate = nextStart.slice(0, 10);
+        const childEndDate = nextDue.slice(0, 10);
+        let offsetDays = existingDependency.offsetDays ?? 0;
+        if (existingDependency.type === "FS") {
+          offsetDays = differenceInDays(childStartDate, parentEndDate);
+        } else if (existingDependency.type === "SS") {
+          offsetDays = differenceInDays(childStartDate, parentStartDate);
+        } else if (existingDependency.type === "FF") {
+          offsetDays = differenceInDays(childEndDate, parentEndDate);
+        }
+        patch.dependency = { ...existingDependency, offsetDays };
+      }
+    }
+  }
   await updateDoc(taskRef, patch);
 
   if (actor) {
@@ -318,11 +365,15 @@ export async function updateTaskDates(
       after: { startDate, dueDate },
     });
   }
+
+  if (projectId) {
+    await recomputeAndApplyDependentTasks(db, projectId, taskId);
+  }
 }
 
 export async function updateTask(
   taskId: string,
-  fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
+  fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "dependency">>,
   actor?: { userId: string; userEmail: string },
 ) {
   const db = getFirestoreDb();
@@ -331,19 +382,22 @@ export async function updateTask(
   let beforeData: Record<string, unknown> | null = null;
   let taskTitle = "task";
   let projectName: string | undefined;
-  if (actor) {
-    const snap = await getDoc(taskRef);
-    if (snap.exists()) {
-      const d = snap.data();
-      beforeData = {
-        title: d.title,
-        startDate: d.startDate,
-        dueDate: d.dueDate,
-        notes: d.notes,
-        assignedTo: d.assignedTo,
-        status: d.status,
-      };
-      taskTitle = d.title ?? "task";
+  let projectId: string | undefined;
+  const snap = await getDoc(taskRef);
+  if (snap.exists()) {
+    const d = snap.data();
+    beforeData = {
+      title: d.title,
+      startDate: d.startDate,
+      dueDate: d.dueDate,
+      notes: d.notes,
+      assignedTo: d.assignedTo,
+      status: d.status,
+      dependency: d.dependency,
+    };
+    taskTitle = d.title ?? "task";
+    projectId = d.projectId as string | undefined;
+    if (actor) {
       const projSnap = await getDoc(doc(db, "projects", d.projectId ?? ""));
       projectName = projSnap.exists() ? (projSnap.data().name as string) : undefined;
     }
@@ -368,6 +422,67 @@ export async function updateTask(
       after: { ...fields },
     });
   }
+
+  if (projectId) {
+    await recomputeAndApplyDependentTasks(db, projectId, taskId);
+  }
+}
+
+function differenceInDays(a: string, b: string): number {
+  const da = new Date(a + "T00:00:00Z");
+  const db = new Date(b + "T00:00:00Z");
+  const diffMs = da.getTime() - db.getTime();
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
+}
+
+async function recomputeAndApplyDependentTasks(
+  db: ReturnType<typeof getFirestoreDb>,
+  projectId: string,
+  rootTaskId: string,
+) {
+  const tasksQuery = query(tasksCollectionRef(), where("projectId", "==", projectId));
+  const snap = await getDocs(tasksQuery);
+  const tasks: ProjectTask[] = snap.docs.map((taskDoc) => {
+    const data = taskDoc.data();
+    return {
+      id: taskDoc.id,
+      projectId: data.projectId ?? projectId,
+      title: data.title ?? "",
+      type: data.type ?? "task",
+      startDate: data.startDate,
+      dueDate: data.dueDate ?? new Date().toISOString().slice(0, 10),
+      status: data.status ?? "not_started",
+      sortOrder: data.sortOrder ?? 0,
+      notes: data.notes,
+      assignedTo: data.assignedTo,
+      googleCalendarEventId: data.googleCalendarEventId,
+      dependency: data.dependency as TaskDependency | undefined,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
+    } as ProjectTask;
+  });
+
+  const updates = computeDependentDates(tasks, rootTaskId);
+  if (updates.size === 0) return;
+
+  let batch = writeBatch(db);
+  let count = 0;
+  for (const [id, value] of updates.entries()) {
+    const ref = doc(db, "tasks", id);
+    batch.update(ref, {
+      startDate: value.startDate,
+      dueDate: value.dueDate,
+      updatedAt: serverTimestamp(),
+    });
+    count += 1;
+    if (count === FIRESTORE_BATCH_LIMIT) {
+      await batch.commit();
+      batch = writeBatch(db);
+      count = 0;
+    }
+  }
+  if (count > 0) {
+    await batch.commit();
+  }
 }
 
 export async function deleteTask(
@@ -380,12 +495,14 @@ export async function deleteTask(
   let taskBefore: Record<string, unknown> | null = null;
   let projectName: string | undefined;
   let taskTitle = "task";
+  let projectId: string | undefined;
   if (actor) {
     const snap = await getDoc(taskRef);
     if (snap.exists()) {
       const d = snap.data();
       taskBefore = { id: taskId, ...d };
       taskTitle = (d.title as string) ?? "task";
+      projectId = d.projectId as string | undefined;
       const projSnap = await getDoc(doc(db, "projects", (d.projectId as string) ?? ""));
       projectName = projSnap.exists() ? (projSnap.data().name as string) : undefined;
     }
@@ -405,6 +522,38 @@ export async function deleteTask(
       before: taskBefore ? ({ tasks: [taskBefore] } as Record<string, unknown>) : null,
       after: null,
     });
+  }
+
+  if (projectId) {
+    const tasksQuery = query(tasksCollectionRef(), where("projectId", "==", projectId));
+    const snap = await getDocs(tasksQuery);
+    const tasks: ProjectTask[] = snap.docs.map((taskDoc) => {
+      const data = taskDoc.data();
+      return {
+        id: taskDoc.id,
+        projectId: data.projectId ?? projectId!,
+        title: data.title ?? "",
+        type: data.type ?? "task",
+        startDate: data.startDate,
+        dueDate: data.dueDate ?? new Date().toISOString().slice(0, 10),
+        status: data.status ?? "not_started",
+        sortOrder: data.sortOrder ?? 0,
+        notes: data.notes,
+        assignedTo: data.assignedTo,
+        googleCalendarEventId: data.googleCalendarEventId,
+        dependency: data.dependency as TaskDependency | undefined,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
+      } as ProjectTask;
+    });
+    const affected = tasks.filter((t) => t.dependency?.dependsOnTaskId === taskId);
+    if (affected.length > 0) {
+      const batch = writeBatch(db);
+      for (const t of affected) {
+        const ref = doc(db, "tasks", t.id);
+        batch.update(ref, { dependency: null, updatedAt: serverTimestamp() });
+      }
+      await batch.commit();
+    }
   }
 }
 

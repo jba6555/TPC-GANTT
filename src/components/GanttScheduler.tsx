@@ -2,7 +2,15 @@
 
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AssignedOption, AssignedTo, Project, ProjectInput, ProjectTask } from "@/types/scheduler";
+import type {
+  AssignedOption,
+  AssignedTo,
+  Project,
+  ProjectInput,
+  ProjectTask,
+  TaskDependency,
+  TaskDependencyType,
+} from "@/types/scheduler";
 import { ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 interface GanttSchedulerProps {
@@ -79,6 +87,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [editNotes, setEditNotes] = useState("");
   const [editAssignedTo, setEditAssignedTo] = useState<AssignedTo>("");
   const [editStatus, setEditStatus] = useState<ProjectTask["status"]>("not_started");
+  const [editDependency, setEditDependency] = useState<TaskDependency | undefined>(undefined);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -93,6 +102,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [taskNotes, setTaskNotes] = useState("");
   const [taskAssignedTo, setTaskAssignedTo] = useState<AssignedTo>("");
   const [taskError, setTaskError] = useState<string | null>(null);
+  const [taskIsDependent, setTaskIsDependent] = useState(false);
+  const [taskDependencyParentId, setTaskDependencyParentId] = useState<string>("");
+  const [taskDependencyType, setTaskDependencyType] = useState<TaskDependencyType>("FS");
+  const [taskDependencyOffsetDays, setTaskDependencyOffsetDays] = useState<number>(0);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
@@ -108,6 +121,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     setEditNotes(task.notes || "");
     setEditAssignedTo(task.assignedTo || "");
     setEditStatus(task.status);
+    setEditDependency(task.dependency);
     setEditError(null);
   }, []);
 
@@ -412,14 +426,17 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
       let latestPast: string | null = null;
 
       for (const task of projectTasks) {
-        const dateKey = task.startDate || task.dueDate;
-        if (!dateKey) continue;
-        if (dateKey >= todayKey) {
-          // Upcoming task: keep the soonest one.
-          if (!nextUpcoming || dateKey < nextUpcoming) nextUpcoming = dateKey;
+        const startKey = task.startDate || null;
+        const fallbackKey = task.startDate || task.dueDate || null;
+        if (!fallbackKey) continue;
+
+        if (startKey && startKey >= todayKey) {
+          // Upcoming task, keyed strictly by start date.
+          if (!nextUpcoming || startKey < nextUpcoming) nextUpcoming = startKey;
         } else {
-          // Past task: keep the most recent one.
-          if (!latestPast || dateKey > latestPast) latestPast = dateKey;
+          // No upcoming start date: use the most recent prior scheduled point
+          // (start when present, otherwise due) only for secondary ordering.
+          if (!latestPast || fallbackKey > latestPast) latestPast = fallbackKey;
         }
       }
 
@@ -454,6 +471,68 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
 
     return withKey.map((entry) => entry.project);
   }, [projects, tasksByProject]);
+
+  type TaskTreeNode = { task: ProjectTask; children: TaskTreeNode[]; depth: number };
+
+  function buildTaskTree(projectTasks: ProjectTask[]): TaskTreeNode[] {
+    const byId = new Map<string, ProjectTask>();
+    const childrenByParent = new Map<string, ProjectTask[]>();
+    const order = new Map<string, number>();
+    projectTasks.forEach((t, index) => {
+      byId.set(t.id, t);
+      order.set(t.id, index);
+    });
+
+    for (const task of projectTasks) {
+      const dep = task.dependency;
+      if (!dep) continue;
+      const parent = byId.get(dep.dependsOnTaskId);
+      if (!parent) continue;
+      const arr = childrenByParent.get(parent.id) ?? [];
+      arr.push(task);
+      childrenByParent.set(parent.id, arr);
+    }
+
+    const roots: ProjectTask[] = [];
+    for (const task of projectTasks) {
+      const dep = task.dependency;
+      if (!dep || !byId.has(dep.dependsOnTaskId)) {
+        roots.push(task);
+      }
+    }
+    roots.sort((a, b) => (order.get(a.id)! - order.get(b.id)!));
+
+    const result: TaskTreeNode[] = [];
+    const visited = new Set<string>();
+
+    function walk(task: ProjectTask, depth: number): TaskTreeNode | null {
+      if (visited.has(task.id)) return null;
+      visited.add(task.id);
+      const node: TaskTreeNode = { task, children: [], depth };
+      const children = (childrenByParent.get(task.id) ?? [])
+        .slice()
+        .sort((a, b) => (order.get(a.id)! - order.get(b.id)!));
+      for (const child of children) {
+        const childNode = walk(child, depth + 1);
+        if (childNode) node.children.push(childNode);
+      }
+      return node;
+    }
+
+    for (const root of roots) {
+      const n = walk(root, 0);
+      if (n) result.push(n);
+    }
+
+    for (const task of projectTasks) {
+      if (!visited.has(task.id)) {
+        const n = walk(task, 0);
+        if (n) result.push(n);
+      }
+    }
+
+    return result;
+  }
 
   const toggleProjectCollapse = useCallback((projectId: string) => {
     setCollapsedProjects((prev) => {
@@ -544,6 +623,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
           <div className="border-b border-zinc-200 bg-white" style={{ height: HEADER_ROW_H }} />
           {sortedProjects.map((project) => {
             const projectTasks = tasksByProject.get(project.id) ?? [];
+            const tree = buildTaskTree(projectTasks);
             const isCollapsed = collapsedProjects.has(project.id);
             return (
               <div key={project.id}>
@@ -603,7 +683,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   </div>
                 </div>
                 {!isCollapsed &&
-                  projectTasks.map((task) => {
+                  tree.map((node) => {
+                    const task = node.task;
+                    const depth = node.depth;
                     return (
                       <button
                         key={task.id}
@@ -614,7 +696,13 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         style={{ height: TASK_ROW_H }}
                       >
                         <div className="min-w-0 w-full text-right">
-                          <p className="truncate text-[10px] font-medium leading-tight text-zinc-900">{task.title}</p>
+                          <p
+                            className="truncate text-[10px] font-medium leading-tight text-zinc-900"
+                            style={{ paddingLeft: depth > 0 ? depth * 10 : 0 }}
+                          >
+                            {task.dependency ? <span className="mr-1 align-middle">↘</span> : null}
+                            {task.title}
+                          </p>
                         </div>
                       </button>
                     );
@@ -689,11 +777,13 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
 
             {sortedProjects.map((project) => {
               const projectTasks = tasksByProject.get(project.id) ?? [];
+              const tree = buildTaskTree(projectTasks);
               const isCollapsed = collapsedProjects.has(project.id);
               return (
                 <div key={project.id}>
                   <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: PROJECT_ROW_H }} />
-                  {!isCollapsed && projectTasks.map((task) => {
+                  {!isCollapsed && tree.map((node) => {
+                    const task = node.task;
                     const start = dayjs(task.startDate || task.dueDate);
                     const due = dayjs(task.dueDate);
                     const left = start.diff(chartStart, "day") * pxPerDay;
@@ -924,15 +1014,24 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!taskTitle.trim() || !onAddTask) return;
+                  if (!taskTitle.trim() || !onAddTask) return;
                 const projectId = taskModalProjectId;
                 if (!projectId) return;
+                  let dependency: TaskDependency | undefined;
+                  if (taskIsDependent && taskDependencyParentId) {
+                    dependency = {
+                      dependsOnTaskId: taskDependencyParentId,
+                      type: taskDependencyType,
+                      offsetDays: taskDependencyOffsetDays || 0,
+                    };
+                  }
                 const payload = {
                   title: taskTitle.trim(),
                   startDate: taskStartDate || undefined,
                   dueDate: taskDueDate || undefined,
                   notes: taskNotes.trim() || undefined,
                   assignedTo: taskAssignedTo || undefined,
+                    dependency,
                 };
                 setTaskError(null);
                 setTaskModalProjectId(null);
@@ -941,6 +1040,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 setTaskDueDate("");
                 setTaskNotes("");
                 setTaskAssignedTo("");
+                  setTaskIsDependent(false);
+                  setTaskDependencyParentId("");
+                  setTaskDependencyOffsetDays(0);
                 void onAddTask(projectId, payload).catch((err: unknown) => {
                   const message =
                     err && typeof err === "object" && "message" in err
@@ -1018,6 +1120,63 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 />
               </div>
 
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={taskIsDependent}
+                    onChange={(e) => setTaskIsDependent(e.target.checked)}
+                    className="h-3 w-3 rounded border-zinc-300 text-zinc-900"
+                  />
+                  Make this a dependent task
+                </label>
+                {taskIsDependent && (
+                  <div className="space-y-2 rounded border border-zinc-200 bg-zinc-50 p-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-zinc-700">Depends on</label>
+                      <select
+                        value={taskDependencyParentId}
+                        onChange={(e) => setTaskDependencyParentId(e.target.value)}
+                        className="w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+                      >
+                        <option value="">Select parent task</option>
+                        {(tasksByProject.get(taskModalProjectId ?? "") ?? []).map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-zinc-700">Dependency type</label>
+                        <select
+                          value={taskDependencyType}
+                          onChange={(e) => setTaskDependencyType(e.target.value as TaskDependencyType)}
+                          className="w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+                        >
+                          <option value="FS">Start after parent finishes (FS)</option>
+                          <option value="SS">Start with parent (SS)</option>
+                          <option value="FF">Finish after parent finishes (FF)</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-zinc-700">Offset (days)</label>
+                        <input
+                          type="number"
+                          value={taskDependencyOffsetDays}
+                          onChange={(e) => setTaskDependencyOffsetDays(Number(e.target.value || 0))}
+                          className="w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-zinc-600">
+                      Positive offsets place the task after the parent; negative offsets place it before.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {taskError && <p className="text-xs text-red-600">{taskError}</p>}
 
               <div className="flex gap-2">
@@ -1088,14 +1247,18 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 }
                 setEditError(null);
                 setEditSaving(true);
-                void onUpdateTask(notesTask.id, {
+                const fields: Parameters<typeof onUpdateTask>[1] = {
                   title: editTitle.trim(),
                   startDate: editStartDate,
                   dueDate: editDueDate,
                   notes: editNotes,
                   assignedTo: editAssignedTo,
                   status: editStatus,
-                })
+                };
+                if (editDependency) {
+                  fields.dependency = editDependency;
+                }
+                void onUpdateTask(notesTask.id, fields)
                   .then(() => {
                     setNotesTask((prev) => {
                       if (!prev || prev.id !== notesTask.id) return prev;
