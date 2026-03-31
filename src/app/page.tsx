@@ -41,6 +41,7 @@ import type {
 } from "@/types/scheduler";
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 import { useAutoBackup } from "@/hooks/useAutoBackup";
+import { buildCsvContent, downloadCsv } from "@/lib/csvExport";
 
 export default function Home() {
   const APP_VERSION = "frozen-col-v14";
@@ -669,8 +670,24 @@ export default function Home() {
 
       {historyOpen && (
         <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl">
-          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
-            <h2 className="text-lg font-semibold text-zinc-900">History Log</h2>
+        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+          <h2 className="text-lg font-semibold text-zinc-900">History Log</h2>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const csv = buildCsvContent(projects, allTasks);
+                const today = dayjs().format("YYYY-MM-DD");
+                downloadCsv(csv, `TPC Project Tracker ${today}.csv`);
+              }}
+              className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 border border-zinc-200"
+              title="Download full CSV backup now"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-3.5 w-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Download CSV
+            </button>
             <button
               type="button"
               onClick={() => setHistoryOpen(false)}
@@ -681,6 +698,7 @@ export default function Home() {
               </svg>
             </button>
           </div>
+        </div>
           <div className="flex-1 overflow-y-auto p-3">
             <div className="mb-3 flex items-center justify-between gap-2">
               <button
