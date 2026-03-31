@@ -305,6 +305,9 @@ export default function Home() {
   }
 
   async function handleUpdateTaskDates(taskId: string, startDate?: string, dueDate?: string) {
+    // Debug: prove timeline date updates are firing with the expected payload.
+    // eslint-disable-next-line no-console
+    console.log("[Timeline] handleUpdateTaskDates", { taskId, startDate, dueDate });
     await updateTaskDates(taskId, startDate, dueDate, actor);
     const t = allTasks.find((x) => x.id === taskId);
     if (!t) return;
@@ -323,8 +326,12 @@ export default function Home() {
 
   async function handleUpdateTask(
     taskId: string,
-    fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status">>,
+    fields: Partial<
+      Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "milestoneImportance">
+    >,
   ) {
+    // eslint-disable-next-line no-console
+    console.log("[Timeline] handleUpdateTask", { taskId, fields });
     await updateTask(taskId, fields, actor);
     const t = allTasks.find((x) => x.id === taskId);
     if (!t) return;

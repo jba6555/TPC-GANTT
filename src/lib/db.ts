@@ -109,6 +109,11 @@ async function logChange(entry: {
   if (entry.projectName !== undefined && entry.projectName !== "") {
     payload.projectName = entry.projectName;
   }
+  // Debug: log all non-test changelog writes so we can see when updates fire.
+  if (typeof window !== "undefined" && entry.entityId !== "test") {
+    // eslint-disable-next-line no-console
+    console.log("[Changelog] logChange payload", { entry, payload });
+  }
   try {
     await addDoc(changelogCollectionRef(), payload);
   } catch (e) {
@@ -373,7 +378,9 @@ export async function updateTaskDates(
 
 export async function updateTask(
   taskId: string,
-  fields: Partial<Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "dependency">>,
+  fields: Partial<
+    Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "dependency" | "milestoneImportance">
+  >,
   actor?: { userId: string; userEmail: string },
 ) {
   const db = getFirestoreDb();
@@ -394,6 +401,7 @@ export async function updateTask(
       assignedTo: d.assignedTo,
       status: d.status,
       dependency: d.dependency,
+      milestoneImportance: d.milestoneImportance,
     };
     taskTitle = d.title ?? "task";
     projectId = d.projectId as string | undefined;
@@ -442,13 +450,14 @@ async function recomputeAndApplyDependentTasks(
 ) {
   const tasksQuery = query(tasksCollectionRef(), where("projectId", "==", projectId));
   const snap = await getDocs(tasksQuery);
-  const tasks: ProjectTask[] = snap.docs.map((taskDoc) => {
+      const tasks: ProjectTask[] = snap.docs.map((taskDoc) => {
     const data = taskDoc.data();
     return {
       id: taskDoc.id,
       projectId: data.projectId ?? projectId,
       title: data.title ?? "",
       type: data.type ?? "task",
+          milestoneImportance: data.milestoneImportance,
       startDate: data.startDate,
       dueDate: data.dueDate ?? new Date().toISOString().slice(0, 10),
       status: data.status ?? "not_started",
