@@ -892,7 +892,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
       </div>
 
       {/* ── SCROLLABLE BODY — projects + task rows scroll here ── */}
-      <div className="flex min-w-0 flex-1 min-h-0 overflow-y-auto">
+      <div className="flex min-w-0 flex-1 min-h-0 overflow-y-auto items-start">
         <div
           className="shrink-0 border-r border-zinc-200 bg-white"
           style={{ width: LABEL_WIDTH }}
