@@ -585,6 +585,20 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     return result;
   }
 
+  function flattenTaskTree(nodes: TaskTreeNode[]): TaskTreeNode[] {
+    const flat: TaskTreeNode[] = [];
+    const walk = (node: TaskTreeNode) => {
+      flat.push(node);
+      for (const child of node.children) {
+        walk(child);
+      }
+    };
+    for (const node of nodes) {
+      walk(node);
+    }
+    return flat;
+  }
+
   const toggleProjectCollapse = useCallback((projectId: string) => {
     setCollapsedProjects((prev) => {
       const next = new Set(prev);
@@ -691,6 +705,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
           {sortedProjects.map((project) => {
             const projectTasks = getVisibleTasksForProject(project.id);
             const tree = buildTaskTree(projectTasks);
+            const flatTree = flattenTaskTree(tree);
             const isCollapsed = collapsedProjects.has(project.id);
             return (
               <div key={project.id}>
@@ -775,7 +790,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   </div>
                 </div>
                 {!isCollapsed &&
-                  tree.map((node) => {
+                  flatTree.map((node) => {
                     const task = node.task;
                     const depth = node.depth;
                     return (
@@ -870,11 +885,12 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
             {sortedProjects.map((project) => {
               const projectTasks = getVisibleTasksForProject(project.id);
               const tree = buildTaskTree(projectTasks);
+              const flatTree = flattenTaskTree(tree);
               const isCollapsed = collapsedProjects.has(project.id);
               return (
                 <div key={project.id}>
                   <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: PROJECT_ROW_H }} />
-                  {!isCollapsed && tree.map((node) => {
+                  {!isCollapsed && flatTree.map((node) => {
                     const task = node.task;
                     const start = dayjs(task.startDate || task.dueDate);
                     const due = dayjs(task.dueDate);
