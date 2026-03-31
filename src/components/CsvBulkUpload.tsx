@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { BulkImportCsvRow, TaskType } from "@/types/scheduler";
+import type { BulkImportCsvRow, MilestoneImportance, TaskType } from "@/types/scheduler";
 
 function parseTaskTypeCell(raw: string | undefined): TaskType | undefined {
   if (!raw?.trim()) return undefined;
@@ -67,6 +67,7 @@ function parseCsvRows(csvText: string) {
   const taskDueIdx = getIndex("task_due", "task_due_date", "due_date");
   const notesIdx = getIndex("task_notes", "notes");
   const assignedIdx = getIndex("assigned_to", "assigned");
+  const milestoneImportanceIdx = getIndex("milestone_importance", "milestone_type");
 
   if (projectNameIdx < 0) {
     throw new Error("CSV is missing required column: project_name");
@@ -92,6 +93,17 @@ function parseCsvRows(csvText: string) {
       throw new Error(`Row ${i + 1}: task_start must be on or before task_due.`);
     }
 
+    let milestoneImportance: MilestoneImportance | undefined;
+    const rawImportance =
+      milestoneImportanceIdx >= 0 ? cells[milestoneImportanceIdx]?.trim().toLowerCase() || undefined : undefined;
+    if (rawImportance) {
+      if (rawImportance === "major" || rawImportance === "minor") {
+        milestoneImportance = rawImportance;
+      } else {
+        throw new Error(`Row ${i + 1}: milestone_importance must be "major" or "minor" when provided.`);
+      }
+    }
+
     rows.push({
       projectName,
       address: addressIdx >= 0 ? cells[addressIdx]?.trim() || undefined : undefined,
@@ -103,6 +115,7 @@ function parseCsvRows(csvText: string) {
       taskDueDate,
       taskNotes: notesIdx >= 0 ? cells[notesIdx]?.trim() || undefined : undefined,
       assignedTo: assignedIdx >= 0 ? cells[assignedIdx]?.trim() || undefined : undefined,
+      milestoneImportance,
     });
   }
   return rows;

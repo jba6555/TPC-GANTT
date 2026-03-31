@@ -358,7 +358,7 @@ export async function updateTaskDates(
   await updateDoc(taskRef, patch);
 
   if (actor) {
-    await logChange({
+    void logChange({
       userId: actor.userId,
       userEmail: actor.userEmail,
       action: "update_task",
@@ -372,7 +372,7 @@ export async function updateTaskDates(
   }
 
   if (projectId) {
-    await recomputeAndApplyDependentTasks(db, projectId, taskId);
+    void recomputeAndApplyDependentTasks(db, projectId, taskId);
   }
 }
 
@@ -418,7 +418,7 @@ export async function updateTask(
   await updateDoc(taskRef, patch);
 
   if (actor) {
-    await logChange({
+    void logChange({
       userId: actor.userId,
       userEmail: actor.userEmail,
       action: "update_task",
@@ -432,7 +432,7 @@ export async function updateTask(
   }
 
   if (projectId) {
-    await recomputeAndApplyDependentTasks(db, projectId, taskId);
+    void recomputeAndApplyDependentTasks(db, projectId, taskId);
   }
 }
 

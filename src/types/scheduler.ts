@@ -94,6 +94,7 @@ export interface BulkImportCsvRow {
   taskDueDate?: string;
   taskNotes?: string;
   assignedTo?: AssignedTo;
+  milestoneImportance?: MilestoneImportance;
 }
 
 export type ChangeAction =
