@@ -398,6 +398,35 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     return map;
   }, [tasks]);
 
+  const sortedProjects = useMemo(() => {
+    const withKey = projects.map((project) => {
+      const projectTasks = tasksByProject.get(project.id) ?? [];
+      // Tasks already sorted nearest → farthest; first entry is the "next" task.
+      const nextTask = projectTasks[0];
+      return {
+        project,
+        nextTaskDateKey: nextTask ? (nextTask.startDate || nextTask.dueDate) : null,
+        nextTaskDueDate: nextTask ? nextTask.dueDate : null,
+      };
+    });
+
+    withKey.sort((a, b) => {
+      const aHasDate = !!a.nextTaskDateKey;
+      const bHasDate = !!b.nextTaskDateKey;
+      if (aHasDate && !bHasDate) return -1;
+      if (!aHasDate && bHasDate) return 1;
+      if (aHasDate && bHasDate && a.nextTaskDateKey !== b.nextTaskDateKey) {
+        return a.nextTaskDateKey! < b.nextTaskDateKey! ? -1 : 1;
+      }
+      if (a.nextTaskDueDate && b.nextTaskDueDate && a.nextTaskDueDate !== b.nextTaskDueDate) {
+        return a.nextTaskDueDate < b.nextTaskDueDate ? -1 : 1;
+      }
+      return a.project.name.localeCompare(b.project.name);
+    });
+
+    return withKey.map((entry) => entry.project);
+  }, [projects, tasksByProject]);
+
   const toggleProjectCollapse = useCallback((projectId: string) => {
     setCollapsedProjects((prev) => {
       const next = new Set(prev);
@@ -485,7 +514,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
           <div className="border-b border-zinc-200 bg-zinc-100" style={{ height: HEADER_ROW_H }} />
           <div className="border-b border-zinc-200 bg-zinc-50" style={{ height: HEADER_ROW_H }} />
           <div className="border-b border-zinc-200 bg-white" style={{ height: HEADER_ROW_H }} />
-          {projects.map((project) => {
+          {sortedProjects.map((project) => {
             const projectTasks = tasksByProject.get(project.id) ?? [];
             const isCollapsed = collapsedProjects.has(project.id);
             return (
@@ -630,7 +659,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
               style={{ left: todayPx, top: 0, bottom: 0, width: 2, backgroundColor: "#ef4444" }}
             />
 
-            {projects.map((project) => {
+            {sortedProjects.map((project) => {
               const projectTasks = tasksByProject.get(project.id) ?? [];
               const isCollapsed = collapsedProjects.has(project.id);
               return (
