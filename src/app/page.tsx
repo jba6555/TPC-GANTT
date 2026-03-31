@@ -317,19 +317,29 @@ export default function Home() {
     const projectName = projects.find((p) => p.id === t.projectId)?.name ?? "";
 
     // Log history directly from the client using known before/after values.
-    void logTimelineChangeFromClient({
-      actor,
-      action: "update_task",
-      entityType: "task",
-      entityId: taskId,
-      projectName,
-      description: `Updated dates on "${t.title}"`,
-      before: { startDate: t.startDate, dueDate: t.dueDate },
-      after: {
-        startDate: startDate !== undefined ? startDate : t.startDate,
-        dueDate: dueDate !== undefined ? dueDate : t.dueDate,
-      },
-    });
+    try {
+      await logTimelineChangeFromClient({
+        actor,
+        action: "update_task",
+        entityType: "task",
+        entityId: taskId,
+        projectName,
+        description: `Updated dates on "${t.title}"`,
+        before: { startDate: t.startDate, dueDate: t.dueDate },
+        after: {
+          startDate: startDate !== undefined ? startDate : t.startDate,
+          dueDate: dueDate !== undefined ? dueDate : t.dueDate,
+        },
+      });
+      const entries = await fetchChangelogFromServer();
+      setChangelog(entries);
+      setChangelogWriteWarning(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setChangelogWriteWarning(`update_task (dates) · ${msg}`);
+      // eslint-disable-next-line no-console
+      console.error("[Changelog] timeline date log failed:", e);
+    }
     // Calendar sync is best-effort; do not fail the timeline update if it errors.
     void syncTaskToGoogleCalendar({
       taskId,
@@ -356,24 +366,34 @@ export default function Home() {
     const merged: ProjectTask = { ...t, ...fields };
     const projectName = projects.find((p) => p.id === merged.projectId)?.name ?? "";
 
-    void logTimelineChangeFromClient({
-      actor,
-      action: "update_task",
-      entityType: "task",
-      entityId: taskId,
-      projectName,
-      description: `Updated "${merged.title}"`,
-      before: {
-        title: t.title,
-        startDate: t.startDate,
-        dueDate: t.dueDate,
-        notes: t.notes,
-        assignedTo: t.assignedTo,
-        status: t.status,
-        milestoneImportance: t.milestoneImportance,
-      },
-      after: { ...fields },
-    });
+    try {
+      await logTimelineChangeFromClient({
+        actor,
+        action: "update_task",
+        entityType: "task",
+        entityId: taskId,
+        projectName,
+        description: `Updated "${merged.title}"`,
+        before: {
+          title: t.title,
+          startDate: t.startDate,
+          dueDate: t.dueDate,
+          notes: t.notes,
+          assignedTo: t.assignedTo,
+          status: t.status,
+          milestoneImportance: t.milestoneImportance,
+        },
+        after: { ...fields },
+      });
+      const entries = await fetchChangelogFromServer();
+      setChangelog(entries);
+      setChangelogWriteWarning(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setChangelogWriteWarning(`update_task (fields) · ${msg}`);
+      // eslint-disable-next-line no-console
+      console.error("[Changelog] timeline field log failed:", e);
+    }
     // Calendar sync is best-effort; do not fail the edit save if it errors.
     void syncTaskToGoogleCalendar({
       taskId,
