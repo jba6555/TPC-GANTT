@@ -142,6 +142,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const scrollToTodayRef = useRef(false);
 
   const openTaskEditor = useCallback((task: ProjectTask) => {
+    setEditSaving(false);
     setNotesTask(task);
     setEditTitle(task.title);
     setEditStartDate(task.startDate || task.dueDate);
@@ -1525,7 +1526,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
           aria-modal="true"
           aria-labelledby="task-notes-title"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setNotesTask(null);
+            if (e.target === e.currentTarget) {
+              setNotesTask(null);
+              setEditSaving(false);
+            }
           }}
         >
           <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
@@ -1537,7 +1541,10 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
               </div>
               <button
                 type="button"
-                onClick={() => setNotesTask(null)}
+                onClick={() => {
+                  setNotesTask(null);
+                  setEditSaving(false);
+                }}
                 className="rounded px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
               >
                 ✕
