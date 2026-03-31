@@ -27,6 +27,7 @@ interface GanttSchedulerProps {
       Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "milestoneImportance">
     >,
   ) => Promise<void>;
+  onToggleMilestone?: (taskId: string, importance: MilestoneImportance) => Promise<void>;
   onDeleteTask?: (taskId: string) => Promise<void>;
   onAddTask?: (
     projectId: string,
@@ -96,7 +97,7 @@ function DependentTaskArrowIcon({ className = "" }: { className?: string }) {
   );
 }
 
-export default function GanttScheduler({ projects, tasks, assignedOptions, onAddProject, onDeleteProject, onUpdateTaskDates, onUpdateTask, onDeleteTask, onAddTask }: GanttSchedulerProps) {
+export default function GanttScheduler({ projects, tasks, assignedOptions, onAddProject, onDeleteProject, onUpdateTaskDates, onUpdateTask, onToggleMilestone, onDeleteTask, onAddTask }: GanttSchedulerProps) {
   const options = assignedOptions ?? ASSIGNED_OPTIONS;
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -1001,7 +1002,14 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           className={`flex shrink-0 cursor-pointer items-center justify-center px-1.5 py-1 text-[8px] leading-none transition-opacity hover:opacity-60 ${isMajorMilestone(task) ? "text-amber-400" : "text-zinc-300"}`}
                           onClick={() => {
                             const next: MilestoneImportance = isMajorMilestone(task) ? "minor" : "major";
-                            void onUpdateTask(task.id, { milestoneImportance: next });
+                            if (onToggleMilestone) {
+                              void onToggleMilestone(task.id, next).catch((err: unknown) => {
+                                const msg = err instanceof Error ? err.message : String(err);
+                                window.alert(`Could not update milestone: ${msg}`);
+                              });
+                            } else {
+                              void onUpdateTask(task.id, { milestoneImportance: next });
+                            }
                           }}
                         >
                           ★

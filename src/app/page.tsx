@@ -42,7 +42,7 @@ import type {
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v13";
+  const APP_VERSION = "frozen-col-v14";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -335,6 +335,9 @@ export default function Home() {
       Pick<ProjectTask, "title" | "startDate" | "dueDate" | "notes" | "assignedTo" | "status" | "milestoneImportance">
     >,
   ) {
+    // Optimistic update so the star reflects the change immediately.
+    setAllTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...fields } : t)));
+
     const t = allTasks.find((x) => x.id === taskId);
 
     // Write history FIRST (same reason as handleUpdateTaskDates).
@@ -366,6 +369,24 @@ export default function Home() {
     }
 
     await updateTask(taskId, fields, undefined, { projectId: t?.projectId });
+  }
+
+  async function handleToggleMilestone(taskId: string, importance: import("@/types/scheduler").MilestoneImportance) {
+    // Optimistic update — show change immediately before Firestore round-trip.
+    setAllTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, milestoneImportance: importance } : t)),
+    );
+    try {
+      await updateTask(taskId, { milestoneImportance: importance });
+    } catch (err) {
+      // Revert optimistic update on failure.
+      setAllTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, milestoneImportance: importance === "major" ? "minor" : "major" } : t,
+        ),
+      );
+      throw err;
+    }
   }
 
   async function handleDeleteTask(taskId: string) {
@@ -637,6 +658,7 @@ export default function Home() {
             onDeleteProject={handleDeleteProject}
             onUpdateTaskDates={handleUpdateTaskDates}
             onUpdateTask={handleUpdateTask}
+            onToggleMilestone={handleToggleMilestone}
             onDeleteTask={handleDeleteTask}
             onAddTask={handleAddTaskForProject}
           />
