@@ -834,25 +834,11 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
             >
               + Project
             </button>
-            <button
-              type="button"
-              onClick={() => setShowMajorOnlyGlobal((prev) => !prev)}
-              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
-                showMajorOnlyGlobal
-                  ? "border-amber-500 bg-amber-100 text-amber-900"
-                  : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
-              }`}
-              title="Toggle major milestones for all projects"
-              aria-pressed={showMajorOnlyGlobal}
-            >
-              <span className="text-[11px]">★</span>
-              <span>Major</span>
-            </button>
-            {/* Assignee filter */}
+            {/* Filter (Assignee + Major) */}
             <div className="relative" ref={assigneeFilterRef}>
               {(() => {
                 const allSelected = selectedAssignees.size >= options.length;
-                const isActive = !allSelected;
+                const isActive = !allSelected || showMajorOnlyGlobal;
                 const hiddenCount = options.length - selectedAssignees.size;
                 return (
                   <>
@@ -864,14 +850,14 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           ? "border-blue-500 bg-blue-100 text-blue-900"
                           : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
                       }`}
-                      title="Filter by Assigned To"
+                      title="Filter"
                       aria-pressed={assigneeFilterOpen}
                     >
                       <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="currentColor" aria-hidden="true">
                         <path d="M1.5 3h13a.5.5 0 0 1 .354.854l-5 5A.5.5 0 0 0 9.5 9.207V14a.5.5 0 0 1-.724.447l-3-1.5A.5.5 0 0 1 5.5 12.5V9.207a.5.5 0 0 0-.146-.353l-5-5A.5.5 0 0 1 .5 3h1zm0 0" />
                       </svg>
                       <span>Filter</span>
-                      {isActive && (
+                      {isActive && hiddenCount > 0 && (
                         <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white">
                           {hiddenCount}
                         </span>
@@ -879,9 +865,6 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                     </button>
                     {assigneeFilterOpen && (
                       <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-zinc-200 bg-white py-1 shadow-lg">
-                        <div className="px-2 pb-1 pt-0.5">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">Assigned To</p>
-                        </div>
                         {/* Select All row */}
                         <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-zinc-50">
                           <input
@@ -898,7 +881,23 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           />
                           <span className="text-xs font-medium text-zinc-700">Select All</span>
                         </label>
+                        {/* Major toggle row */}
+                        <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-zinc-50">
+                          <input
+                            type="checkbox"
+                            checked={showMajorOnlyGlobal}
+                            onChange={() => setShowMajorOnlyGlobal((prev) => !prev)}
+                            className="h-3.5 w-3.5 rounded accent-amber-500"
+                          />
+                          <span className="flex items-center gap-1 text-xs font-medium text-amber-800">
+                            <span className="text-[11px]">★</span>
+                            Major Only
+                          </span>
+                        </label>
                         <div className="my-0.5 border-t border-zinc-100" />
+                        <div className="px-2 pb-1 pt-0.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">Assigned To</p>
+                        </div>
                         {(() => {
                           const taskCountByAssignee = new Map<string, number>();
                           for (const t of tasks) {
