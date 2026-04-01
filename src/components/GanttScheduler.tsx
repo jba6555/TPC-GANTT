@@ -136,6 +136,9 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [taskMilestoneImportance, setTaskMilestoneImportance] = useState<MilestoneImportance>("major");
   const [showMajorOnlyGlobal, setShowMajorOnlyGlobal] = useState(false);
   const [majorOnlyProjects, setMajorOnlyProjects] = useState<Set<string>>(new Set());
+  const [assigneeFilterOpen, setAssigneeFilterOpen] = useState(false);
+  const [selectedAssignees, setSelectedAssignees] = useState<Set<string>>(() => new Set((assignedOptions ?? ASSIGNED_OPTIONS).map((o) => o.value)));
+  const assigneeFilterRef = useRef<HTMLDivElement | null>(null);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
@@ -157,6 +160,29 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     setEditMilestoneImportance(inferredImportance);
     setEditError(null);
   }, []);
+
+  useEffect(() => {
+    const allValues = new Set((assignedOptions ?? ASSIGNED_OPTIONS).map((o) => o.value));
+    setSelectedAssignees((prev) => {
+      // Add any new options that weren't in the previous set
+      const merged = new Set(prev);
+      for (const v of allValues) {
+        if (!merged.has(v)) merged.add(v);
+      }
+      return merged;
+    });
+  }, [assignedOptions]);
+
+  useEffect(() => {
+    if (!assigneeFilterOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (assigneeFilterRef.current && !assigneeFilterRef.current.contains(e.target as Node)) {
+        setAssigneeFilterOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [assigneeFilterOpen]);
 
   const todayMarkerRef = useCallback((node: HTMLDivElement | null) => {
     if (!node || hasScrolledToToday.current) return;
@@ -612,10 +638,19 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
 
   function getVisibleTasksForProject(projectId: string): ProjectTask[] {
     const projectTasks = tasksByProject.get(projectId) ?? [];
-    if (!showMajorOnlyGlobal && !majorOnlyProjects.has(projectId)) {
-      return projectTasks;
+    const majorFiltered =
+      showMajorOnlyGlobal || majorOnlyProjects.has(projectId)
+        ? projectTasks.filter((t) => isMajorMilestone(t))
+        : projectTasks;
+
+    if (selectedAssignees.size >= options.length) {
+      return majorFiltered;
     }
-    return projectTasks.filter((t) => isMajorMilestone(t));
+    return majorFiltered.filter((t) => {
+      const vals = t.assignedTo ?? [];
+      if (vals.length === 0) return selectedAssignees.has("");
+      return vals.some((v) => selectedAssignees.has(v));
+    });
   }
 
   const sortedProjects = useMemo(() => {
@@ -813,6 +848,90 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
               <span className="text-[11px]">★</span>
               <span>Major</span>
             </button>
+            {/* Assignee filter */}
+            <div className="relative" ref={assigneeFilterRef}>
+              {(() => {
+                const allSelected = selectedAssignees.size >= options.length;
+                const isActive = !allSelected;
+                const hiddenCount = options.length - selectedAssignees.size;
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setAssigneeFilterOpen((prev) => !prev)}
+                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                        isActive
+                          ? "border-blue-500 bg-blue-100 text-blue-900"
+                          : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
+                      }`}
+                      title="Filter by Assigned To"
+                      aria-pressed={assigneeFilterOpen}
+                    >
+                      <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="currentColor" aria-hidden="true">
+                        <path d="M1.5 3h13a.5.5 0 0 1 .354.854l-5 5A.5.5 0 0 0 9.5 9.207V14a.5.5 0 0 1-.724.447l-3-1.5A.5.5 0 0 1 5.5 12.5V9.207a.5.5 0 0 0-.146-.353l-5-5A.5.5 0 0 1 .5 3h1zm0 0" />
+                      </svg>
+                      <span>Filter</span>
+                      {isActive && (
+                        <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white">
+                          {hiddenCount}
+                        </span>
+                      )}
+                    </button>
+                    {assigneeFilterOpen && (
+                      <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-zinc-200 bg-white py-1 shadow-lg">
+                        <div className="px-2 pb-1 pt-0.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">Assigned To</p>
+                        </div>
+                        {/* Select All row */}
+                        <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-zinc-50">
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            onChange={() => {
+                              if (allSelected) {
+                                setSelectedAssignees(new Set());
+                              } else {
+                                setSelectedAssignees(new Set(options.map((o) => o.value)));
+                              }
+                            }}
+                            className="h-3.5 w-3.5 rounded accent-blue-600"
+                          />
+                          <span className="text-xs font-medium text-zinc-700">Select All</span>
+                        </label>
+                        <div className="my-0.5 border-t border-zinc-100" />
+                        {options.map((opt) => {
+                          const checked = selectedAssignees.has(opt.value);
+                          const label = opt.label || "Unassigned";
+                          return (
+                            <label key={opt.value} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-zinc-50">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  setSelectedAssignees((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(opt.value)) next.delete(opt.value);
+                                    else next.add(opt.value);
+                                    return next;
+                                  });
+                                }}
+                                className="h-3.5 w-3.5 rounded accent-blue-600"
+                              />
+                              <span
+                                className="rounded px-1.5 py-0.5 text-xs font-medium"
+                                style={{ backgroundColor: opt.color, color: opt.textColor }}
+                              >
+                                {label}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
