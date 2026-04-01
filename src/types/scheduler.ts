@@ -56,7 +56,7 @@ export interface ProjectTask {
   status: "not_started" | "in_progress" | "complete";
   sortOrder: number;
   notes?: string;
-  assignedTo?: AssignedTo;
+  assignedTo?: AssignedTo[];
   /** Google Calendar event id when synced to the shared org calendar. */
   googleCalendarEventId?: string;
   /** Optional dependency configuration for this task. */
@@ -78,7 +78,7 @@ export interface TaskInput {
   startDate?: string;
   dueDate: string;
   notes?: string;
-  assignedTo?: AssignedTo;
+  assignedTo?: AssignedTo[];
   dependency?: TaskDependency;
 }
 
@@ -93,7 +93,7 @@ export interface BulkImportCsvRow {
   taskStartDate?: string;
   taskDueDate?: string;
   taskNotes?: string;
-  assignedTo?: AssignedTo;
+  assignedTo?: AssignedTo[];
   milestoneImportance?: MilestoneImportance;
 }
 

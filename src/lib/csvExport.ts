@@ -58,7 +58,7 @@ export function buildCsvContent(projects: Project[], tasks: ProjectTask[]): stri
             escapeCsvCell(task.startDate),
             escapeCsvCell(task.dueDate),
             escapeCsvCell(task.notes),
-            escapeCsvCell(task.assignedTo),
+            escapeCsvCell(task.assignedTo ? task.assignedTo.join(",") : undefined),
             escapeCsvCell(task.milestoneImportance),
           ].join(","),
         );

@@ -44,6 +44,13 @@ function changelogCollectionRef() {
   return collection(getFirestoreDb(), "changelog");
 }
 
+/** Coerce legacy single-string assignedTo values to string[]. */
+function coerceAssignedTo(raw: unknown): string[] | undefined {
+  if (Array.isArray(raw)) return raw as string[];
+  if (typeof raw === "string" && raw.length > 0) return [raw];
+  return undefined;
+}
+
 function isFirestoreTimestampLike(value: unknown): value is { toDate: () => Date } {
   return (
     typeof value === "object" &&
@@ -195,7 +202,7 @@ export function subscribeToTasks(
             status: data.status ?? "not_started",
             sortOrder: data.sortOrder ?? 0,
             notes: data.notes,
-            assignedTo: data.assignedTo,
+            assignedTo: coerceAssignedTo(data.assignedTo),
             googleCalendarEventId: data.googleCalendarEventId,
             dependency: data.dependency,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
@@ -233,7 +240,7 @@ export function subscribeToAllTasks(
             status: data.status ?? "not_started",
             sortOrder: data.sortOrder ?? 0,
             notes: data.notes,
-            assignedTo: data.assignedTo,
+            assignedTo: coerceAssignedTo(data.assignedTo),
             googleCalendarEventId: data.googleCalendarEventId,
             dependency: data.dependency,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),
@@ -410,7 +417,7 @@ async function recomputeAndApplyDependentTasks(
       status: data.status ?? "not_started",
       sortOrder: data.sortOrder ?? 0,
       notes: data.notes,
-      assignedTo: data.assignedTo,
+      assignedTo: coerceAssignedTo(data.assignedTo),
       googleCalendarEventId: data.googleCalendarEventId,
       dependency: data.dependency as TaskDependency | undefined,
       updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString(),

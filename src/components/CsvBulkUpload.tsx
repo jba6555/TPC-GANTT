@@ -114,7 +114,9 @@ function parseCsvRows(csvText: string) {
       taskStartDate,
       taskDueDate,
       taskNotes: notesIdx >= 0 ? cells[notesIdx]?.trim() || undefined : undefined,
-      assignedTo: assignedIdx >= 0 ? cells[assignedIdx]?.trim() || undefined : undefined,
+      assignedTo: assignedIdx >= 0 && cells[assignedIdx]?.trim()
+        ? cells[assignedIdx].trim().split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined,
       milestoneImportance,
     });
   }

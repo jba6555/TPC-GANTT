@@ -36,7 +36,7 @@ interface GanttSchedulerProps {
       startDate?: string;
       dueDate?: string;
       notes?: string;
-      assignedTo?: string;
+      assignedTo?: string[];
       dependency?: import("@/types/scheduler").TaskDependency;
     },
   ) => Promise<void>;
@@ -107,7 +107,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [editStartDate, setEditStartDate] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editNotes, setEditNotes] = useState("");
-  const [editAssignedTo, setEditAssignedTo] = useState<AssignedTo>("");
+  const [editAssignedTo, setEditAssignedTo] = useState<AssignedTo[]>([]);
   const [editStatus, setEditStatus] = useState<ProjectTask["status"]>("not_started");
   const [editDependency, setEditDependency] = useState<TaskDependency | undefined>(undefined);
   const [editMilestoneImportance, setEditMilestoneImportance] = useState<MilestoneImportance>("major");
@@ -124,7 +124,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
   const [taskStartDate, setTaskStartDate] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
   const [taskNotes, setTaskNotes] = useState("");
-  const [taskAssignedTo, setTaskAssignedTo] = useState<AssignedTo>("");
+  const [taskAssignedTo, setTaskAssignedTo] = useState<AssignedTo[]>([]);
   const [taskError, setTaskError] = useState<string | null>(null);
   const [taskIsDependent, setTaskIsDependent] = useState(false);
   const [taskDependencyParentId, setTaskDependencyParentId] = useState<string>("");
@@ -150,7 +150,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
     setEditStartDate(task.startDate || task.dueDate);
     setEditDueDate(task.dueDate);
     setEditNotes(task.notes || "");
-    setEditAssignedTo(task.assignedTo || "");
+    setEditAssignedTo(task.assignedTo || []);
     setEditStatus(task.status);
     setEditDependency(task.dependency);
     const inferredImportance: MilestoneImportance = task.milestoneImportance ?? "major";
@@ -941,7 +941,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           setTaskStartDate("");
                           setTaskDueDate("");
                           setTaskNotes("");
-                          setTaskAssignedTo("");
+                          setTaskAssignedTo([]);
                           setTaskIsDependent(false);
                           setTaskDependencyParentId("");
                           setTaskDependencyOffsetDays(0);
@@ -1079,14 +1079,21 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                         }}
                       >
                         {(() => {
-                          const barOpt = task.assignedTo ? options.find((o) => o.value === task.assignedTo) : null;
-                          const barColor = barOpt?.color || "#3b82f6";
-                          const barTextColor = barOpt?.textColor || "#ffffff";
+                          const firstOpt =
+                            task.assignedTo?.length
+                              ? options.find((o) => o.value === task.assignedTo![0])
+                              : null;
+                          const barColor = firstOpt?.color || "#3b82f6";
+                          const barTextColor = firstOpt?.textColor || "#ffffff";
                           const dateRangeText = start.isSame(due, "day")
                             ? start.format("MM/DD/YY")
                             : `${start.format("MM/DD/YY")} - ${due.format("MM/DD/YY")}`;
-                          const assigneeDisplay =
-                            barOpt?.label || (task.assignedTo ? String(task.assignedTo) : "");
+                          const assigneeDisplay = task.assignedTo?.length
+                            ? task.assignedTo
+                                .map((v) => options.find((o) => o.value === v)?.label ?? v)
+                                .filter(Boolean)
+                                .join(", ")
+                            : "";
                           const barLabelText = assigneeDisplay
                             ? `${dateRangeText} (${assigneeDisplay})`
                             : dateRangeText;
@@ -1257,7 +1264,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
               setTaskModalProjectId(null);
               setTaskError(null);
               setTaskNotes("");
-              setTaskAssignedTo("");
+              setTaskAssignedTo([]);
             }
           }}
         >
@@ -1275,7 +1282,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   setTaskModalProjectId(null);
                   setTaskError(null);
                   setTaskNotes("");
-                  setTaskAssignedTo("");
+                  setTaskAssignedTo([]);
                   setTaskIsDependent(false);
                   setTaskDependencyParentId("");
                   setTaskDependencyOffsetDays(0);
@@ -1383,7 +1390,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   startDate: startDateForSave,
                   dueDate: dueDateForSave,
                   notes: taskNotes.trim() || undefined,
-                  assignedTo: taskAssignedTo || undefined,
+                  assignedTo: taskAssignedTo.length > 0 ? taskAssignedTo : undefined,
                   dependency,
                   milestoneImportance: taskMilestoneImportance,
                 };
@@ -1394,7 +1401,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                 setTaskStartDate("");
                 setTaskDueDate("");
                 setTaskNotes("");
-                setTaskAssignedTo("");
+                setTaskAssignedTo([]);
                 setTaskIsDependent(false);
                 setTaskDependencyParentId("");
                 setTaskDependencyOffsetDays(0);
@@ -1602,26 +1609,29 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
 
               <div className="space-y-1">
                 <label className="text-sm font-medium text-zinc-700">Assigned To</label>
-                <select
-                  value={taskAssignedTo}
-                  onChange={(e) => setTaskAssignedTo(e.target.value as AssignedTo)}
-                  className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
-                >
-                  {options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label || "(none)"}
-                    </option>
+                <div className="max-h-36 overflow-y-auto rounded border border-zinc-200 px-2 py-1">
+                  {options.filter((o) => o.value !== "").map((opt) => (
+                    <label key={opt.value} className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 rounded border-zinc-300"
+                        checked={taskAssignedTo.includes(opt.value)}
+                        onChange={(e) => {
+                          setTaskAssignedTo((prev) =>
+                            e.target.checked
+                              ? [...prev, opt.value]
+                              : prev.filter((v) => v !== opt.value),
+                          );
+                        }}
+                      />
+                      <span
+                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: opt.color }}
+                      />
+                      {opt.label}
+                    </label>
                   ))}
-                </select>
-                {taskAssignedTo && (
-                  <div className="flex items-center gap-1.5 pt-0.5">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: options.find((o) => o.value === taskAssignedTo)?.color }}
-                    />
-                    <span className="text-xs text-zinc-500">Bar color preview</span>
-                  </div>
-                )}
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -1650,7 +1660,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                     setTaskModalProjectId(null);
                     setTaskError(null);
                     setTaskNotes("");
-                    setTaskAssignedTo("");
+                    setTaskAssignedTo([]);
                   }}
                   className="rounded bg-zinc-100 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
                 >
@@ -1797,33 +1807,43 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-700">Assigned To</label>
-                  <select
-                    value={editAssignedTo}
-                    onChange={(e) => setEditAssignedTo(e.target.value as AssignedTo)}
-                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
-                  >
-                    {options.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label || "(none)"}
-                      </option>
-                    ))}
-                  </select>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-700">Assigned To</label>
+                <div className="max-h-32 overflow-y-auto rounded border border-zinc-200 px-2 py-1">
+                  {options.filter((o) => o.value !== "").map((opt) => (
+                    <label key={opt.value} className="flex cursor-pointer items-center gap-2 py-0.5 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-3 w-3 rounded border-zinc-300"
+                        checked={editAssignedTo.includes(opt.value)}
+                        onChange={(e) => {
+                          setEditAssignedTo((prev) =>
+                            e.target.checked
+                              ? [...prev, opt.value]
+                              : prev.filter((v) => v !== opt.value),
+                          );
+                        }}
+                      />
+                      <span
+                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: opt.color }}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-700">Status</label>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value as ProjectTask["status"])}
-                    className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
-                  >
-                    <option value="not_started">Not Started</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="complete">Complete</option>
-                  </select>
-                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-700">Status</label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value as ProjectTask["status"])}
+                  className="w-full rounded border border-zinc-200 px-2 py-1 text-sm"
+                >
+                  <option value="not_started">Not Started</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="complete">Complete</option>
+                </select>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-zinc-700">Notes</label>

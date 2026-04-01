@@ -293,7 +293,7 @@ export default function Home() {
       startDate?: string;
       dueDate?: string;
       notes?: string;
-      assignedTo?: string;
+      assignedTo?: string[];
       dependency?: import("@/types/scheduler").TaskDependency;
       milestoneImportance?: import("@/types/scheduler").MilestoneImportance;
     },
@@ -311,7 +311,7 @@ export default function Home() {
         startDate,
         dueDate,
         notes: input.notes,
-        assignedTo: (input.assignedTo as import("@/types/scheduler").AssignedTo) || undefined,
+        assignedTo: input.assignedTo && input.assignedTo.length > 0 ? input.assignedTo : undefined,
         dependency: input.dependency,
         milestoneImportance: input.milestoneImportance,
       },
@@ -488,7 +488,7 @@ export default function Home() {
         }
       }
 
-      const assignedTo: AssignedTo | undefined = row.assignedTo?.trim() || undefined;
+      const assignedTo: AssignedTo[] | undefined = row.assignedTo && row.assignedTo.length > 0 ? row.assignedTo : undefined;
       const sortOrder = taskCountByProjectId.get(projectId) ?? 0;
       const projectName = row.projectName.trim();
       await createTask(
