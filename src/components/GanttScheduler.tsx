@@ -891,7 +891,7 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           />
                           <span className="flex items-center gap-1 text-xs font-medium text-amber-800">
                             <span className="text-[11px]">★</span>
-                            Major Only
+                            Major Milestones
                           </span>
                         </label>
                         <div className="my-0.5 border-t border-zinc-100" />
