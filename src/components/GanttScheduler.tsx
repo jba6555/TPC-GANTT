@@ -899,33 +899,49 @@ export default function GanttScheduler({ projects, tasks, assignedOptions, onAdd
                           <span className="text-xs font-medium text-zinc-700">Select All</span>
                         </label>
                         <div className="my-0.5 border-t border-zinc-100" />
-                        {options.map((opt) => {
-                          const checked = selectedAssignees.has(opt.value);
-                          const label = opt.label || "Unassigned";
-                          return (
-                            <label key={opt.value} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-zinc-50">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => {
-                                  setSelectedAssignees((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(opt.value)) next.delete(opt.value);
-                                    else next.add(opt.value);
-                                    return next;
-                                  });
-                                }}
-                                className="h-3.5 w-3.5 rounded accent-blue-600"
-                              />
-                              <span
-                                className="rounded px-1.5 py-0.5 text-xs font-medium"
-                                style={{ backgroundColor: opt.color, color: opt.textColor }}
-                              >
-                                {label}
-                              </span>
-                            </label>
-                          );
-                        })}
+                        {(() => {
+                          const taskCountByAssignee = new Map<string, number>();
+                          for (const t of tasks) {
+                            const vals = t.assignedTo ?? [];
+                            if (vals.length === 0) {
+                              taskCountByAssignee.set("", (taskCountByAssignee.get("") ?? 0) + 1);
+                            } else {
+                              for (const v of vals) {
+                                taskCountByAssignee.set(v, (taskCountByAssignee.get(v) ?? 0) + 1);
+                              }
+                            }
+                          }
+                          const sorted = [...options].sort((a, b) => (taskCountByAssignee.get(b.value) ?? 0) - (taskCountByAssignee.get(a.value) ?? 0));
+                          return sorted.map((opt) => {
+                            const checked = selectedAssignees.has(opt.value);
+                            const label = opt.label || "Unassigned";
+                            const count = taskCountByAssignee.get(opt.value) ?? 0;
+                            return (
+                              <label key={opt.value} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-zinc-50">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setSelectedAssignees((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(opt.value)) next.delete(opt.value);
+                                      else next.add(opt.value);
+                                      return next;
+                                    });
+                                  }}
+                                  className="h-3.5 w-3.5 rounded accent-blue-600"
+                                />
+                                <span
+                                  className="rounded px-1.5 py-0.5 text-xs font-medium"
+                                  style={{ backgroundColor: opt.color, color: opt.textColor }}
+                                >
+                                  {label}
+                                </span>
+                                <span className="ml-auto text-[10px] text-zinc-400">{count}</span>
+                              </label>
+                            );
+                          });
+                        })()}
                       </div>
                     )}
                   </>
