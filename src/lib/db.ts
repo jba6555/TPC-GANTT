@@ -942,3 +942,28 @@ export async function revertChange(entry: ChangelogEntry, actor: { userId: strin
     after: entry.before,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Calendar Inbox: dismissed Google Calendar event IDs
+// Stored in settings/calendarInbox { dismissedIds: string[] }
+// ---------------------------------------------------------------------------
+
+export async function getDismissedCalendarEventIds(): Promise<string[]> {
+  const db = getFirestoreDb();
+  const docRef = doc(db, "settings", "calendarInbox");
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) return [];
+  const data = snap.data();
+  return Array.isArray(data.dismissedIds) ? (data.dismissedIds as string[]) : [];
+}
+
+export async function dismissCalendarEventId(eventId: string): Promise<void> {
+  const db = getFirestoreDb();
+  const docRef = doc(db, "settings", "calendarInbox");
+  const snap = await getDoc(docRef);
+  const existing: string[] = snap.exists() && Array.isArray(snap.data().dismissedIds)
+    ? (snap.data().dismissedIds as string[])
+    : [];
+  if (existing.includes(eventId)) return;
+  await setDoc(docRef, { dismissedIds: [...existing, eventId] }, { merge: true });
+}

@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import GanttScheduler from "@/components/GanttScheduler";
+import CalendarEventInbox from "@/components/CalendarEventInbox";
 import { logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
 import HistoryLog from "@/components/HistoryLog";
 import AssignedToManager from "@/components/AssignedToManager";
@@ -41,6 +42,7 @@ import type {
 } from "@/types/scheduler";
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 import { useAutoBackup } from "@/hooks/useAutoBackup";
+import { useCalendarInbox } from "@/hooks/useCalendarInbox";
 import { buildCsvContent, downloadCsv } from "@/lib/csvExport";
 
 export default function Home() {
@@ -53,6 +55,8 @@ export default function Home() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [assignedToOpen, setAssignedToOpen] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
+  const [calendarInboxOpen, setCalendarInboxOpen] = useState(false);
+  const calendarAutoOpenedRef = useRef(false);
   const [allowedUserEmails, setAllowedUserEmails] = useState<string[]>([]);
   const [allowedUsersReady, setAllowedUsersReady] = useState(false);
   const [allowedUsersLoadError, setAllowedUsersLoadError] = useState(false);
@@ -254,6 +258,47 @@ export default function Home() {
   const actor = useMemo(() => ({ userId, userEmail }), [userId, userEmail]);
 
   useAutoBackup(projects, allTasks, changelog, authReady);
+
+  const { pendingEvents, isLoading: calendarLoading, dismissEvent, refetch: refetchCalendar } =
+    useCalendarInbox(allTasks);
+
+  // Auto-open the inbox once per session when pending events arrive
+  useEffect(() => {
+    if (!calendarAutoOpenedRef.current && pendingEvents.length > 0) {
+      calendarAutoOpenedRef.current = true;
+      setCalendarInboxOpen(true);
+    }
+  }, [pendingEvents.length]);
+
+  async function handleAddCalendarTask(
+    projectId: string,
+    input: {
+      title: string;
+      type: import("@/types/scheduler").TaskType;
+      startDate?: string;
+      dueDate: string;
+      notes?: string;
+      assignedTo?: string[];
+      googleCalendarEventId: string;
+    },
+  ) {
+    const sortOrder = allTasks.filter((t) => t.projectId === projectId).length;
+    const projectName = projects.find((p) => p.id === projectId)?.name ?? "";
+    await createTask(
+      projectId,
+      {
+        title: input.title,
+        type: input.type,
+        startDate: input.startDate,
+        dueDate: input.dueDate,
+        notes: input.notes,
+        assignedTo: input.assignedTo && input.assignedTo.length > 0 ? input.assignedTo : undefined,
+        googleCalendarEventId: input.googleCalendarEventId,
+      },
+      sortOrder,
+      { ...actor, projectName },
+    );
+  }
 
   async function handleAddProject(input: ProjectInput) {
     await createProject(userId, input, userEmail);
@@ -584,6 +629,27 @@ export default function Home() {
           <p className="text-xs text-zinc-400">Version: {APP_VERSION}</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Calendar Inbox button */}
+          <button
+            type="button"
+            onClick={() => setCalendarInboxOpen((prev) => !prev)}
+            className={`relative flex items-center gap-1.5 rounded px-3 py-1 text-sm font-medium transition-colors ${
+              calendarInboxOpen
+                ? "bg-blue-600 text-white"
+                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+            }`}
+            title="Calendar Inbox"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+            </svg>
+            Calendar
+            {pendingEvents.length > 0 && (
+              <span className={`absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${calendarInboxOpen ? "bg-white text-blue-600" : "bg-blue-600 text-white"}`}>
+                {pendingEvents.length > 9 ? "9+" : pendingEvents.length}
+              </span>
+            )}
+          </button>
           <button
             type="button"
             onClick={() => setHistoryOpen((prev) => !prev)}
@@ -859,6 +925,17 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <CalendarEventInbox
+        events={pendingEvents}
+        projects={projects}
+        assignedOptions={assignedOptions}
+        isLoading={calendarLoading}
+        isOpen={calendarInboxOpen}
+        onClose={() => setCalendarInboxOpen(false)}
+        onDismiss={dismissEvent}
+        onAddTask={handleAddCalendarTask}
+      />
     </main>
   );
 }

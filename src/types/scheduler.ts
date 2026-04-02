@@ -80,6 +80,16 @@ export interface TaskInput {
   notes?: string;
   assignedTo?: AssignedTo[];
   dependency?: TaskDependency;
+  googleCalendarEventId?: string;
+}
+
+/** A Google Calendar event surfaced in the Calendar Inbox. */
+export interface CalendarEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface BulkImportCsvRow {
