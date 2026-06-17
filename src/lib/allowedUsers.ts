@@ -46,15 +46,25 @@ function parseSchedulerAdminOverrideEmails(): string[] {
     .filter(Boolean);
 }
 
-export function isEmailAllowlisted(
+/** Passes without reading Firestore (builtin, admin env override, or enforcement off). */
+export function isEmailAllowlistedWithoutFirestore(
   email: string | null | undefined,
-  allowedEmails: string[],
 ): boolean {
   if (!isUserAllowlistEnforced()) return true;
   if (!email?.trim()) return false;
   const norm = email.trim().toLowerCase();
   if (parseSchedulerAdminOverrideEmails().includes(norm)) return true;
   if (BUILTIN_ALLOWED_USER_EMAILS.some((e) => e.toLowerCase() === norm)) return true;
+  return false;
+}
+
+export function isEmailAllowlisted(
+  email: string | null | undefined,
+  allowedEmails: string[],
+): boolean {
+  if (!isUserAllowlistEnforced()) return true;
+  if (isEmailAllowlistedWithoutFirestore(email)) return true;
   if (allowedEmails.length === 0) return true;
+  const norm = email!.trim().toLowerCase();
   return allowedEmails.includes(norm);
 }

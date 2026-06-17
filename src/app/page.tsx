@@ -10,7 +10,7 @@ import HistoryLog from "@/components/HistoryLog";
 import AssignedToManager from "@/components/AssignedToManager";
 import UserManager from "@/components/UserManager";
 import CsvBulkUpload from "@/components/CsvBulkUpload";
-import { isEmailAllowlisted } from "@/lib/allowedUsers";
+import { isEmailAllowlisted, isEmailAllowlistedWithoutFirestore, isUserAllowlistEnforced } from "@/lib/allowedUsers";
 import {
   createProject,
   createTask,
@@ -113,11 +113,11 @@ export default function Home() {
       if (cancelled) return;
 
       unsubscribe = subscribeToAuth((user) => {
-        setAuthReady(true);
         if (!user) {
           router.replace("/login");
           return;
         }
+        setAuthReady(true);
         setUserId(user.uid);
         setUserEmail(user.email ?? "");
       });
@@ -240,7 +240,12 @@ export default function Home() {
   }, [authReady, userId]);
 
   useEffect(() => {
-    if (!authReady || !userId || !allowedUsersReady || !userEmail) return;
+    if (!authReady || !userId || !userEmail) return;
+    if (!isUserAllowlistEnforced()) return;
+    // Builtin / admin env overrides never need the Firestore allowlist document.
+    if (isEmailAllowlistedWithoutFirestore(userEmail)) return;
+    if (!allowedUsersReady) return;
+    if (isEmailAllowlisted(userEmail, allowedUserEmails)) return;
     if (allowedUsersLoadError) {
       void (async () => {
         await logout();
@@ -248,7 +253,6 @@ export default function Home() {
       })();
       return;
     }
-    if (isEmailAllowlisted(userEmail, allowedUserEmails)) return;
     void (async () => {
       await logout();
       router.replace("/login?denied=1");
@@ -571,7 +575,12 @@ export default function Home() {
     await createTask(projectId, { title: "Meeting with NCHFA", type: "milestone", dueDate: "2026-06-01" }, 3, seedActor);
   }
 
-  if (!authReady) {
+  const allowlistGatePending =
+    isUserAllowlistEnforced() &&
+    !isEmailAllowlistedWithoutFirestore(userEmail) &&
+    !allowedUsersReady;
+
+  if (!authReady || !userId || allowlistGatePending) {
     return <main className="p-8 text-sm text-zinc-600">Loading...</main>;
   }
 
