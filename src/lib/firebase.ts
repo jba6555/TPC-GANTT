@@ -5,7 +5,7 @@ import {
   getFirestore,
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager,
+  persistentSingleTabManager,
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -45,6 +45,19 @@ export function getFirebaseProjectId() {
 
 let firestoreSingleton: Firestore | null = null;
 
+export async function resetFirestoreClient() {
+  if (typeof window === "undefined" || !firestoreSingleton) return;
+  const { clearIndexedDbPersistence, terminate } = await import("firebase/firestore");
+  const db = firestoreSingleton;
+  firestoreSingleton = null;
+  await terminate(db);
+  try {
+    await clearIndexedDbPersistence(db);
+  } catch {
+    // IndexedDB may already be cleared after terminate.
+  }
+}
+
 /**
  * Without `localCache`, initializeFirestore defaults to memory-only — data disappears on refresh
  * and writes may not durably reach the server. Use IndexedDB + multi-tab sync in the browser.
@@ -60,9 +73,9 @@ export function getFirestoreDb(): Firestore {
   try {
     firestoreSingleton = initializeFirestore(app, {
       localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
+        tabManager: persistentSingleTabManager(undefined),
       }),
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
       // Changelog and task payloads often include optional fields; without this,
       // Firestore rejects writes that contain undefined (history would never persist).
       ignoreUndefinedProperties: true,

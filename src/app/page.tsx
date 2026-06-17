@@ -44,13 +44,13 @@ import type {
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 import { useAutoBackup } from "@/hooks/useAutoBackup";
 import { useCalendarInbox } from "@/hooks/useCalendarInbox";
-import { getFirebaseProjectId } from "@/lib/firebase";
+import { getFirebaseProjectId, resetFirestoreClient } from "@/lib/firebase";
 import { formatFirestoreError, isFirestorePermissionError } from "@/lib/firestoreErrors";
 import { getAuthTokenDiagnostics } from "@/lib/authDiagnostics";
 import { buildCsvContent, downloadCsv } from "@/lib/csvExport";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v19";
+  const APP_VERSION = "frozen-col-v20";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -176,20 +176,40 @@ export default function Home() {
             : `token aud=${diag.tokenAudience} but app project=${diag.configuredProjectId} — Vercel env vars may be wrong; redeploy after fixing`,
         );
       }
-      firestoreServerOkRef.current = probe.ok;
-      if (probe.ok) {
-        setProjectsServerSynced(true);
-        setDataLoadError(null);
-        setDataLoadErrorDetail(null);
-      } else if (/permission-denied|unauthenticated/i.test(probe.detail)) {
-        setDataLoadError("permission-denied");
-        setDataLoadErrorDetail(probe.detail);
-        setProjectsServerSynced(true);
+
+      if (!probe.ok && probe.restOk && !probe.sdkOk) {
+        await resetFirestoreClient();
+        const retry = await probeFirestoreServerRead();
+        if (!cancelled && retry.ok) {
+          firestoreServerOkRef.current = true;
+          setProjectsServerSynced(true);
+          setDataLoadError(null);
+          setDataLoadErrorDetail(null);
+          setAuthTokenDiag((prev) => `${prev ?? ""} · reset fixed sdk`.trim());
+        } else if (!cancelled) {
+          firestoreServerOkRef.current = false;
+          setDataLoadError("server-sync-blocked");
+          setDataLoadErrorDetail(retry.detail || probe.detail);
+          setProjectsServerSynced(true);
+        }
       } else {
-        setDataLoadError(probe.detail);
-        setDataLoadErrorDetail(probe.detail);
-        setProjectsServerSynced(true);
+        firestoreServerOkRef.current = probe.ok;
+        if (probe.ok) {
+          setProjectsServerSynced(true);
+          setDataLoadError(null);
+          setDataLoadErrorDetail(null);
+        } else if (/permission-denied|unauthenticated/i.test(probe.detail)) {
+          setDataLoadError(probe.restOk ? "server-sync-blocked" : "permission-denied");
+          setDataLoadErrorDetail(probe.detail);
+          setProjectsServerSynced(true);
+        } else {
+          setDataLoadError(probe.detail);
+          setDataLoadErrorDetail(probe.detail);
+          setProjectsServerSynced(true);
+        }
       }
+
+      if (cancelled) return;
 
       unsubscribe = subscribeToProjects(
         (incoming, fromCache) => {
@@ -679,23 +699,13 @@ export default function Home() {
 
   const firestoreAccessHelp = clientHostname ? (
     <div className="mt-2 rounded border border-current/15 bg-black/[0.03] px-2 py-1.5 text-xs">
-      <p className="font-medium">Most likely fix — API key website restrictions</p>
+      <p className="font-medium">Diagnostics</p>
       <p className="mt-1 opacity-90">
-        Google sign-in works but Firestore is blocked. In{" "}
-        <span className="font-medium">Google Cloud Console</span> → APIs &amp; Services → Credentials →
-        open <span className="font-medium">Browser key (auto created by Firebase)</span>:
+        Your login token targets the right Firebase project. If the detail line below shows{" "}
+        <span className="font-mono">rest ok</span> but <span className="font-mono">sdk failed</span>, the app will
+        auto-reset its local Firestore cache (frozen-col-v20). If both fail, open Firebase → Firestore → Rules →
+        Rules Playground and test a <span className="font-mono">get /projects</span> read while signed in as your email.
       </p>
-      <ul className="mt-1 list-inside list-disc space-y-0.5 opacity-90">
-        <li>
-          <span className="font-medium">Application restrictions → Websites</span> — add both:{" "}
-          <span className="font-mono">https://{clientHostname}/*</span> and{" "}
-          <span className="font-mono">https://{clientHostname}</span>
-        </li>
-        <li>
-          <span className="font-medium">API restrictions</span> — use &quot;Don&apos;t restrict key&quot;, or ensure{" "}
-          <span className="font-medium">Cloud Firestore API</span> is on the allowlist.
-        </li>
-      </ul>
     </div>
   ) : null;
 

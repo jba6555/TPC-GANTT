@@ -17,7 +17,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { getFirestoreDb } from "@/lib/firebase";
+import { getFirebaseProjectId, getFirestoreDb } from "@/lib/firebase";
 import type {
   AssignedOption,
   ChangeAction,
@@ -144,21 +144,68 @@ export async function probeFirestoreServerRead(): Promise<{
   ok: boolean;
   projectsCount: number;
   detail: string;
+  restOk: boolean;
+  sdkOk: boolean;
 }> {
   const { ensureAuthTokenForFirestore } = await import("@/lib/auth");
   const user = await ensureAuthTokenForFirestore();
   if (!user) {
-    return { ok: false, projectsCount: 0, detail: "not signed in" };
+    return { ok: false, projectsCount: 0, detail: "not signed in", restOk: false, sdkOk: false };
   }
+
+  const projectId = getFirebaseProjectId();
+  let restOk = false;
+  let restDetail = "rest not run";
+
+  try {
+    const token = await user.getIdToken(true);
+    const res = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/projects?pageSize=5`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const body = await res.text();
+    if (res.ok) {
+      restOk = true;
+      try {
+        const json = JSON.parse(body) as { documents?: unknown[] };
+        restDetail = `rest ok · projects=${json.documents?.length ?? 0}`;
+      } catch {
+        restDetail = "rest ok";
+      }
+    } else {
+      restDetail = `rest HTTP ${res.status} · ${body.slice(0, 200)}`;
+    }
+  } catch (e) {
+    restDetail = `rest error · ${formatFirestoreError(e)}`;
+  }
+
   try {
     const snap = await getDocsFromServer(projectsCollectionRef());
     return {
       ok: true,
       projectsCount: snap.size,
-      detail: `server read ok · uid=${user.uid} · projects=${snap.size}`,
+      detail: `sdk ok · ${restDetail} · uid=${user.uid}`,
+      restOk,
+      sdkOk: true,
     };
   } catch (e) {
-    return { ok: false, projectsCount: 0, detail: formatFirestoreError(e) };
+    const sdkDetail = formatFirestoreError(e);
+    if (restOk) {
+      return {
+        ok: false,
+        projectsCount: 0,
+        detail: `sdk failed (${sdkDetail}) but ${restDetail} — stale client cache; reset will run automatically`,
+        restOk: true,
+        sdkOk: false,
+      };
+    }
+    return {
+      ok: false,
+      projectsCount: 0,
+      detail: `${sdkDetail} · ${restDetail}`,
+      restOk,
+      sdkOk: false,
+    };
   }
 }
 
