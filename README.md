@@ -30,6 +30,17 @@ If you see projects from an old session but a server error, Firebase **App Check
 
 **Or** register the web app with reCAPTCHA v3 under App Check, add `NEXT_PUBLIC_FIREBASE_APP_CHECK_RECAPTCHA_SITE_KEY` in Vercel, redeploy.
 
+### Firestore `permission-denied` while signed in (cached data still shows)
+
+Google sign-in can work while Firestore server reads fail if the **Firebase API key** in Google Cloud has **website restrictions** that omit your Vercel host.
+
+**Google Cloud Console** → **APIs & Services** → **Credentials** → **Browser key (auto created by Firebase)**:
+
+- **Application restrictions → Websites** — add both `https://YOUR-HOST.vercel.app/*` and `https://YOUR-HOST.vercel.app`
+- **API restrictions** — “Don’t restrict key”, or include **Cloud Firestore API**
+
+Save, wait a few minutes, hard-refresh the app.
+
 ### Google sign-in from localhost
 
 If you see `auth/configuration-not-found` or OAuth errors, open **Google Cloud Console → APIs & Services → Credentials** and edit the **Web** OAuth 2.0 client your Firebase project uses (Project settings → Your apps).

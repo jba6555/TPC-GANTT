@@ -49,7 +49,7 @@ import { formatFirestoreError, isFirestorePermissionError } from "@/lib/firestor
 import { buildCsvContent, downloadCsv } from "@/lib/csvExport";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v17";
+  const APP_VERSION = "frozen-col-v18";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -70,6 +70,7 @@ export default function Home() {
   const [changelogWriteWarning, setChangelogWriteWarning] = useState<string | null>(null);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   const [dataLoadErrorDetail, setDataLoadErrorDetail] = useState<string | null>(null);
+  const [clientHostname, setClientHostname] = useState("");
   const [projectsServerSynced, setProjectsServerSynced] = useState(false);
   const [historyTestStatus, setHistoryTestStatus] = useState<string | null>(null);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
@@ -83,6 +84,10 @@ export default function Home() {
   const hasLocalProjectsRef = useRef(false);
   const firestoreServerOkRef = useRef(false);
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") setClientHostname(window.location.hostname);
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem("app-title");
@@ -662,6 +667,28 @@ export default function Home() {
     !isEmailAllowlistedWithoutFirestore(userEmail) &&
     !allowedUsersReady;
 
+  const firestoreAccessHelp = clientHostname ? (
+    <div className="mt-2 rounded border border-current/15 bg-black/[0.03] px-2 py-1.5 text-xs">
+      <p className="font-medium">Most likely fix — API key website restrictions</p>
+      <p className="mt-1 opacity-90">
+        Google sign-in works but Firestore is blocked. In{" "}
+        <span className="font-medium">Google Cloud Console</span> → APIs &amp; Services → Credentials →
+        open <span className="font-medium">Browser key (auto created by Firebase)</span>:
+      </p>
+      <ul className="mt-1 list-inside list-disc space-y-0.5 opacity-90">
+        <li>
+          <span className="font-medium">Application restrictions → Websites</span> — add both:{" "}
+          <span className="font-mono">https://{clientHostname}/*</span> and{" "}
+          <span className="font-mono">https://{clientHostname}</span>
+        </li>
+        <li>
+          <span className="font-medium">API restrictions</span> — use &quot;Don&apos;t restrict key&quot;, or ensure{" "}
+          <span className="font-medium">Cloud Firestore API</span> is on the allowlist.
+        </li>
+      </ul>
+    </div>
+  ) : null;
+
   if (!authReady || !userId || allowlistGatePending) {
     return <main className="p-8 text-sm text-zinc-600">Loading...</main>;
   }
@@ -836,24 +863,14 @@ export default function Home() {
               <>
                 <p className="font-medium">Showing saved data — server sync is blocked.</p>
                 <p className="mt-1 text-xs text-amber-900">
-                  You are signed in and local data loaded, but a live Firestore server read failed.
-                  App Check is <span className="font-medium">not</span> set up on your project (Apps tab shows
-                  Register), so check the <span className="font-medium">APIs</span> tab — Firestore should be{" "}
-                  <span className="font-medium">Unenforced</span>.
+                  You are signed in (uid below) and old data loaded from this browser, but Firestore
+                  rejected a live server read. Rules and App Check are not the problem.
                 </p>
-                <p className="mt-2 text-xs font-medium text-amber-950">Try:</p>
-                <ol className="mt-1 list-inside list-decimal space-y-1 text-xs text-amber-900">
-                  <li>Sign out, hard refresh (Ctrl+Shift+R), sign in again.</li>
-                  <li>
-                    In Vercel, confirm all <span className="font-mono">NEXT_PUBLIC_FIREBASE_*</span> values match
-                    Firebase → Project settings → Your apps → TPC Gantt.
-                  </li>
-                  <li>
-                    In Firebase → Authentication → Settings → Authorized domains, add your Vercel URL if missing.
-                  </li>
-                </ol>
+                {firestoreAccessHelp}
                 <p className="mt-2 text-xs text-amber-900">
-                  Until fixed, edits may not save for everyone or on new devices.
+                  Also confirm Vercel <span className="font-mono">NEXT_PUBLIC_FIREBASE_*</span> values match
+                  Firebase → Project settings → Your apps → TPC Gantt, and your hostname is in Firebase →
+                  Authentication → Authorized domains.
                 </p>
                 {dataLoadErrorDetail && (
                   <p className="mt-2 font-mono text-[11px] text-amber-950/90 break-words">
@@ -864,10 +881,7 @@ export default function Home() {
             ) : dataLoadError === "permission-denied" ? (
               <>
                 <p className="font-medium">Signed in, but Firestore would not load data.</p>
-                <p className="mt-1 text-xs text-red-800">
-                  Your rules allow any signed-in user. Check App Check (above), Vercel project id, and
-                  Firestore database = (default).
-                </p>
+                {firestoreAccessHelp}
                 {dataLoadErrorDetail && (
                   <p className="mt-2 font-mono text-[11px] text-red-900/90 break-words">
                     {dataLoadErrorDetail} · project={getFirebaseProjectId() || "?"} · uid={userId}
