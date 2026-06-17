@@ -46,10 +46,11 @@ import { useAutoBackup } from "@/hooks/useAutoBackup";
 import { useCalendarInbox } from "@/hooks/useCalendarInbox";
 import { getFirebaseProjectId } from "@/lib/firebase";
 import { formatFirestoreError, isFirestorePermissionError } from "@/lib/firestoreErrors";
+import { getAuthTokenDiagnostics } from "@/lib/authDiagnostics";
 import { buildCsvContent, downloadCsv } from "@/lib/csvExport";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v18";
+  const APP_VERSION = "frozen-col-v19";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -70,6 +71,7 @@ export default function Home() {
   const [changelogWriteWarning, setChangelogWriteWarning] = useState<string | null>(null);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   const [dataLoadErrorDetail, setDataLoadErrorDetail] = useState<string | null>(null);
+  const [authTokenDiag, setAuthTokenDiag] = useState<string | null>(null);
   const [clientHostname, setClientHostname] = useState("");
   const [projectsServerSynced, setProjectsServerSynced] = useState(false);
   const [historyTestStatus, setHistoryTestStatus] = useState<string | null>(null);
@@ -166,6 +168,14 @@ export default function Home() {
 
       const probe = await probeFirestoreServerRead();
       if (cancelled) return;
+      const diag = await getAuthTokenDiagnostics();
+      if (diag) {
+        setAuthTokenDiag(
+          diag.audiencesMatch
+            ? `token aud=${diag.tokenAudience} (matches app)`
+            : `token aud=${diag.tokenAudience} but app project=${diag.configuredProjectId} — Vercel env vars may be wrong; redeploy after fixing`,
+        );
+      }
       firestoreServerOkRef.current = probe.ok;
       if (probe.ok) {
         setProjectsServerSynced(true);
@@ -872,6 +882,9 @@ export default function Home() {
                   Firebase → Project settings → Your apps → TPC Gantt, and your hostname is in Firebase →
                   Authentication → Authorized domains.
                 </p>
+                {authTokenDiag && (
+                  <p className="mt-2 font-mono text-[11px] text-amber-950/90 break-words">{authTokenDiag}</p>
+                )}
                 {dataLoadErrorDetail && (
                   <p className="mt-2 font-mono text-[11px] text-amber-950/90 break-words">
                     {dataLoadErrorDetail} · project={getFirebaseProjectId() || "?"} · uid={userId}
@@ -882,6 +895,9 @@ export default function Home() {
               <>
                 <p className="font-medium">Signed in, but Firestore would not load data.</p>
                 {firestoreAccessHelp}
+                {authTokenDiag && (
+                  <p className="mt-2 font-mono text-[11px] text-red-900/90 break-words">{authTokenDiag}</p>
+                )}
                 {dataLoadErrorDetail && (
                   <p className="mt-2 font-mono text-[11px] text-red-900/90 break-words">
                     {dataLoadErrorDetail} · project={getFirebaseProjectId() || "?"} · uid={userId}
