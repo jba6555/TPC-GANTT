@@ -48,7 +48,7 @@ import { formatFirestoreError, isFirestorePermissionError } from "@/lib/firestor
 import { buildCsvContent, downloadCsv } from "@/lib/csvExport";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v15";
+  const APP_VERSION = "frozen-col-v16";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -78,6 +78,8 @@ export default function Home() {
   const titleInputRef = useRef<HTMLInputElement>(null);
   /** While deleting, Firestore snapshots can replay stale cache; filter these ids out until the write settles. */
   const deletingProjectIdsRef = useRef<Set<string>>(new Set());
+  /** True once a listener delivered project rows (usually from local cache before server sync). */
+  const hasLocalProjectsRef = useRef(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -153,19 +155,27 @@ export default function Home() {
       if (cancelled || !user) return;
 
       setProjectsServerSynced(false);
+      hasLocalProjectsRef.current = false;
       unsubscribe = subscribeToProjects(
         (incoming, fromCache) => {
+          if (incoming.length > 0) hasLocalProjectsRef.current = true;
           setProjects(incoming.filter((p) => !deletingProjectIdsRef.current.has(p.id)));
-          setDataLoadError(null);
-          setDataLoadErrorDetail(null);
-          if (!fromCache) setProjectsServerSynced(true);
+          if (!fromCache) {
+            setProjectsServerSynced(true);
+            setDataLoadError(null);
+            setDataLoadErrorDetail(null);
+          }
         },
         (err) => {
           console.error("[page] projects subscription error:", err);
           setProjectsServerSynced(true);
           const detail = formatFirestoreError(err);
           if (isFirestorePermissionError(err)) {
-            setDataLoadError("permission-denied");
+            if (hasLocalProjectsRef.current) {
+              setDataLoadError("server-sync-blocked");
+            } else {
+              setDataLoadError("permission-denied");
+            }
             setDataLoadErrorDetail(detail);
           } else {
             setDataLoadError(err.message || "Failed to load projects.");
@@ -198,7 +208,11 @@ export default function Home() {
           console.error("[page] tasks subscription error:", err);
           const detail = formatFirestoreError(err);
           if (isFirestorePermissionError(err)) {
-            setDataLoadError("permission-denied");
+            if (hasLocalProjectsRef.current) {
+              setDataLoadError("server-sync-blocked");
+            } else {
+              setDataLoadError("permission-denied");
+            }
             setDataLoadErrorDetail(detail);
           } else {
             setDataLoadError((prev) => prev ?? (err.message || "Failed to load tasks."));
@@ -785,32 +799,51 @@ export default function Home() {
       )}
 
       {dataLoadError && (
-        <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+        <div
+          className={`mb-3 flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${
+            dataLoadError === "server-sync-blocked"
+              ? "border-amber-200 bg-amber-50 text-amber-950"
+              : "border-red-200 bg-red-50 text-red-900"
+          }`}
+        >
           <div className="min-w-0">
-            {dataLoadError === "permission-denied" ? (
+            {dataLoadError === "server-sync-blocked" ? (
+              <>
+                <p className="font-medium">Showing saved data — server sync is blocked.</p>
+                <p className="mt-1 text-xs text-amber-900">
+                  You are signed in and local data loaded (e.g. Helmers), but Firestore rejected the
+                  live server request. This almost always means <span className="font-medium">App Check</span>{" "}
+                  enforcement is on without the app configured.
+                </p>
+                <p className="mt-2 text-xs font-medium text-amber-950">Fix (pick one):</p>
+                <ol className="mt-1 list-inside list-decimal space-y-1 text-xs text-amber-900">
+                  <li>
+                    <span className="font-medium">Easiest:</span> Firebase Console →{" "}
+                    <span className="font-medium">App Check</span> → <span className="font-medium">Firestore</span>{" "}
+                    → set enforcement to <span className="font-medium">Unenforced</span> (or Monitoring only).
+                  </li>
+                  <li>
+                    Or register the web app under App Check with reCAPTCHA v3, copy the site key into
+                    Vercel as <span className="font-mono">NEXT_PUBLIC_FIREBASE_APP_CHECK_RECAPTCHA_SITE_KEY</span>,
+                    then redeploy.
+                  </li>
+                </ol>
+                <p className="mt-2 text-xs text-amber-900">
+                  Until fixed, edits may not save for everyone or on new devices.
+                </p>
+                {dataLoadErrorDetail && (
+                  <p className="mt-2 font-mono text-[11px] text-amber-950/90 break-words">
+                    {dataLoadErrorDetail} · project={getFirebaseProjectId() || "?"} · uid={userId}
+                  </p>
+                )}
+              </>
+            ) : dataLoadError === "permission-denied" ? (
               <>
                 <p className="font-medium">Signed in, but Firestore would not load data.</p>
                 <p className="mt-1 text-xs text-red-800">
-                  Your rules already allow any signed-in user, so this usually means the app and
-                  Firebase project are mismatched, or Firestore is not receiving your login token.
+                  Your rules allow any signed-in user. Check App Check (above), Vercel project id, and
+                  Firestore database = (default).
                 </p>
-                <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-red-800">
-                  <li>
-                    In <span className="font-medium">Vercel → Project → Settings → Environment Variables</span>,
-                    confirm <span className="font-mono">NEXT_PUBLIC_FIREBASE_PROJECT_ID</span> is{" "}
-                    <span className="font-mono">{getFirebaseProjectId() || "tpc-gantt-chart"}</span> (same
-                    project where you edited Rules).
-                  </li>
-                  <li>
-                    In Firebase → Firestore → Rules, confirm the database dropdown says{" "}
-                    <span className="font-medium">(default)</span>, not a secondary database.
-                  </li>
-                  <li>
-                    In Firebase → App Check, if Firestore enforcement is on, either turn it off or
-                    configure App Check in the app.
-                  </li>
-                  <li>Try sign out, hard refresh (Ctrl+Shift+R), and sign in again.</li>
-                </ul>
                 {dataLoadErrorDetail && (
                   <p className="mt-2 font-mono text-[11px] text-red-900/90 break-words">
                     {dataLoadErrorDetail} · project={getFirebaseProjectId() || "?"} · uid={userId}
@@ -826,8 +859,13 @@ export default function Home() {
           </div>
           <button
             type="button"
-            onClick={() => setDataLoadError(null)}
-            className="shrink-0 rounded px-2 py-1 text-xs font-medium text-red-900 underline decoration-red-600/50 hover:bg-red-100/80"
+            onClick={() => {
+              setDataLoadError(null);
+              setDataLoadErrorDetail(null);
+            }}
+            className={`shrink-0 rounded px-2 py-1 text-xs font-medium underline decoration-600/50 hover:bg-black/5 ${
+              dataLoadError === "server-sync-blocked" ? "text-amber-950" : "text-red-900"
+            }`}
           >
             Dismiss
           </button>

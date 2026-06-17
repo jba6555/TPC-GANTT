@@ -26,7 +26,7 @@ function hasFirebaseConfig() {
   );
 }
 
-function getFirebaseApp() {
+export function getFirebaseApp() {
   if (!hasFirebaseConfig()) {
     throw new Error(
       "Firebase is not configured. Copy .env.local.example to .env.local and set values.",

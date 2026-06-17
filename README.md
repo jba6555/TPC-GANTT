@@ -22,6 +22,14 @@ Or paste `firestore.rules` in **Firebase Console → Firestore → Rules → Pub
 
 If signed-in users still cannot load data after rules are correct, check **Vercel env** `NEXT_PUBLIC_FIREBASE_PROJECT_ID` matches the Firebase project, Firestore rules are on the **(default)** database, and **App Check** is not enforcing Firestore without client setup.
 
+### App Check (common “permission-denied” with cached data visible)
+
+If you see projects from an old session but a server error, Firebase **App Check** is likely enforcing Firestore without a token from the web app.
+
+**Quick fix:** Firebase Console → **App Check** → **Firestore** → set enforcement to **Unenforced**.
+
+**Or** register the web app with reCAPTCHA v3 under App Check, add `NEXT_PUBLIC_FIREBASE_APP_CHECK_RECAPTCHA_SITE_KEY` in Vercel, redeploy.
+
 ### Google sign-in from localhost
 
 If you see `auth/configuration-not-found` or OAuth errors, open **Google Cloud Console → APIs & Services → Credentials** and edit the **Web** OAuth 2.0 client your Firebase project uses (Project settings → Your apps).
