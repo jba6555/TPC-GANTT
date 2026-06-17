@@ -74,6 +74,16 @@ export async function waitForRedirectAndAuthReady() {
   await auth.authStateReady();
 }
 
+/** Ensure Firestore requests include a fresh ID token (avoids permission-denied races right after sign-in). */
+export async function ensureAuthTokenForFirestore() {
+  await ensureFirebaseAuthPersistence();
+  const auth = getFirebaseAuth();
+  await auth.authStateReady();
+  const user = auth.currentUser;
+  if (!user) return;
+  await user.getIdToken();
+}
+
 export async function logout() {
   await signOut(getFirebaseAuth());
 }

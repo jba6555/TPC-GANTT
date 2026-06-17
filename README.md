@@ -11,7 +11,16 @@ Simple MVP scheduler for development projects with:
 2. Enable Authentication -> Google provider.
 3. Create Firestore database.
 4. Copy `.env.local.example` to `.env.local` and fill values.
-5. Apply `firestore.rules` in Firebase console.
+5. **Deploy Firestore rules** (required once, and after any `firestore.rules` change):
+
+```bash
+npx firebase login
+npm run deploy:firestore-rules
+```
+
+Or paste `firestore.rules` in **Firebase Console → Firestore → Rules → Publish**.
+
+If signed-in users see “Firestore blocked loading your data”, production rules are usually still an old version that checks the Users email list on the server. Redeploy the rules above.
 
 ### Google sign-in from localhost
 

@@ -5,12 +5,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import GanttScheduler from "@/components/GanttScheduler";
 import CalendarEventInbox from "@/components/CalendarEventInbox";
-import { logout, subscribeToAuth, waitForRedirectAndAuthReady } from "@/lib/auth";
+import { logout, subscribeToAuth, waitForRedirectAndAuthReady, ensureAuthTokenForFirestore } from "@/lib/auth";
 import HistoryLog from "@/components/HistoryLog";
 import AssignedToManager from "@/components/AssignedToManager";
 import UserManager from "@/components/UserManager";
 import CsvBulkUpload from "@/components/CsvBulkUpload";
-import { isEmailAllowlisted, isEmailAllowlistedWithoutFirestore, isUserAllowlistEnforced } from "@/lib/allowedUsers";
+import { isEmailAllowlisted, isEmailAllowlistedWithoutFirestore, isUserAllowlistEnforced, isBuiltinAllowedUserEmail } from "@/lib/allowedUsers";
 import {
   createProject,
   createTask,
@@ -131,44 +131,76 @@ export default function Home() {
 
   useEffect(() => {
     if (!authReady || !userId) return;
-    setProjectsServerSynced(false);
-    const unsubscribe = subscribeToProjects(
-      (incoming, fromCache) => {
-        setProjects(incoming.filter((p) => !deletingProjectIdsRef.current.has(p.id)));
-        setDataLoadError(null);
-        if (!fromCache) setProjectsServerSynced(true);
-      },
-      (err) => {
-        console.error("[page] projects subscription error:", err);
-        setProjectsServerSynced(true);
-        const code = (err as { code?: string }).code ?? "";
-        if (/permission|insufficient/i.test(code) || /permission|insufficient/i.test(err.message)) {
-          setDataLoadError("permission-denied");
-        } else {
-          setDataLoadError(err.message || "Failed to load projects.");
-        }
-      },
-    );
-    return () => unsubscribe();
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    void (async () => {
+      try {
+        await ensureAuthTokenForFirestore();
+      } catch (e) {
+        console.error("[page] auth token before Firestore:", e);
+      }
+      if (cancelled) return;
+
+      setProjectsServerSynced(false);
+      unsubscribe = subscribeToProjects(
+        (incoming, fromCache) => {
+          setProjects(incoming.filter((p) => !deletingProjectIdsRef.current.has(p.id)));
+          setDataLoadError(null);
+          if (!fromCache) setProjectsServerSynced(true);
+        },
+        (err) => {
+          console.error("[page] projects subscription error:", err);
+          setProjectsServerSynced(true);
+          const code = (err as { code?: string }).code ?? "";
+          if (/permission|insufficient/i.test(code) || /permission|insufficient/i.test(err.message)) {
+            setDataLoadError("permission-denied");
+          } else {
+            setDataLoadError(err.message || "Failed to load projects.");
+          }
+        },
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [authReady, userId]);
 
   useEffect(() => {
     if (!authReady || !userId) return;
-    const unsubscribe = subscribeToAllTasks(
-      (incoming) => {
-        setAllTasks(incoming.filter((t) => !deletingProjectIdsRef.current.has(t.projectId)));
-      },
-      (err) => {
-        console.error("[page] tasks subscription error:", err);
-        const code = (err as { code?: string }).code ?? "";
-        if (/permission|insufficient/i.test(code) || /permission|insufficient/i.test(err.message)) {
-          setDataLoadError("permission-denied");
-        } else {
-          setDataLoadError((prev) => prev ?? (err.message || "Failed to load tasks."));
-        }
-      },
-    );
-    return () => unsubscribe();
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    void (async () => {
+      try {
+        await ensureAuthTokenForFirestore();
+      } catch (e) {
+        console.error("[page] auth token before Firestore:", e);
+      }
+      if (cancelled) return;
+
+      unsubscribe = subscribeToAllTasks(
+        (incoming) => {
+          setAllTasks(incoming.filter((t) => !deletingProjectIdsRef.current.has(t.projectId)));
+        },
+        (err) => {
+          console.error("[page] tasks subscription error:", err);
+          const code = (err as { code?: string }).code ?? "";
+          if (/permission|insufficient/i.test(code) || /permission|insufficient/i.test(err.message)) {
+            setDataLoadError("permission-denied");
+          } else {
+            setDataLoadError((prev) => prev ?? (err.message || "Failed to load tasks."));
+          }
+        },
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [authReady, userId]);
 
   useEffect(() => {
@@ -743,12 +775,24 @@ export default function Home() {
           <div className="min-w-0">
             {dataLoadError === "permission-denied" ? (
               <>
-                <p className="font-medium">Access denied — your account cannot load data.</p>
+                <p className="font-medium">Firestore blocked loading your data.</p>
                 <p className="mt-1 text-xs text-red-800">
-                  Ask an administrator to add your email (<span className="font-mono">{userEmail}</span>) using the{" "}
-                  <span className="font-medium">Users</span> button in the top-right, then sign out and sign back in.
-                  If you are the administrator, check that the Firestore security rules are deployed (
-                  <span className="font-mono">firestore.rules</span> in this repo).
+                  {isBuiltinAllowedUserEmail(userEmail) || isEmailAllowlistedWithoutFirestore(userEmail) ? (
+                    <>
+                      You are signed in as an administrator (<span className="font-mono">{userEmail}</span>), but
+                      the <span className="font-medium">Firestore security rules in Firebase</span> are out of date.
+                      Deploy <span className="font-mono">firestore.rules</span> from this repo: Firebase Console →
+                      Firestore → Rules → paste the file and Publish, or run{" "}
+                      <span className="font-mono">npm run deploy:firestore-rules</span> after{" "}
+                      <span className="font-mono">firebase login</span>.
+                    </>
+                  ) : (
+                    <>
+                      Ask an administrator to add your email (<span className="font-mono">{userEmail}</span>) using
+                      the <span className="font-medium">Users</span> button, or deploy current{" "}
+                      <span className="font-mono">firestore.rules</span> if rules were never updated in Firebase.
+                    </>
+                  )}
                 </p>
               </>
             ) : (
