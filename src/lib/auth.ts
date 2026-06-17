@@ -81,7 +81,7 @@ export async function ensureAuthTokenForFirestore() {
   await auth.authStateReady();
   const user = auth.currentUser;
   if (!user) return null;
-  await user.getIdToken();
+  await user.getIdToken(true);
   return user;
 }
 
@@ -94,7 +94,7 @@ export async function waitForSignedInSession() {
   const auth = getFirebaseAuth();
   const user = auth.currentUser;
   if (!user) return null;
-  await user.getIdToken();
+  await user.getIdToken(true);
   return user;
 }
 

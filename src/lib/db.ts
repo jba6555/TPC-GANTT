@@ -31,6 +31,7 @@ import type {
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 import { mergeBuiltinAllowedEmails } from "@/lib/allowedUsers";
 import { computeDependentDates } from "@/lib/taskDependencies";
+import { formatFirestoreError } from "@/lib/firestoreErrors";
 
 function projectsCollectionRef() {
   return collection(getFirestoreDb(), "projects");
@@ -135,6 +136,29 @@ async function logChange(entry: {
         }),
       );
     }
+  }
+}
+
+/** One-shot server read to verify Auth token reaches Firestore (not just local cache). */
+export async function probeFirestoreServerRead(): Promise<{
+  ok: boolean;
+  projectsCount: number;
+  detail: string;
+}> {
+  const { ensureAuthTokenForFirestore } = await import("@/lib/auth");
+  const user = await ensureAuthTokenForFirestore();
+  if (!user) {
+    return { ok: false, projectsCount: 0, detail: "not signed in" };
+  }
+  try {
+    const snap = await getDocsFromServer(projectsCollectionRef());
+    return {
+      ok: true,
+      projectsCount: snap.size,
+      detail: `server read ok · uid=${user.uid} · projects=${snap.size}`,
+    };
+  } catch (e) {
+    return { ok: false, projectsCount: 0, detail: formatFirestoreError(e) };
   }
 }
 

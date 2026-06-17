@@ -23,6 +23,7 @@ import {
   saveAssignedOptions,
   subscribeToProjects,
   subscribeToAllTasks,
+  probeFirestoreServerRead,
   subscribeToChangelog,
   subscribeToAssignedOptions,
   subscribeToAllowedUsers,
@@ -48,7 +49,7 @@ import { formatFirestoreError, isFirestorePermissionError } from "@/lib/firestor
 import { buildCsvContent, downloadCsv } from "@/lib/csvExport";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v16";
+  const APP_VERSION = "frozen-col-v17";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -80,6 +81,7 @@ export default function Home() {
   const deletingProjectIdsRef = useRef<Set<string>>(new Set());
   /** True once a listener delivered project rows (usually from local cache before server sync). */
   const hasLocalProjectsRef = useRef(false);
+  const firestoreServerOkRef = useRef(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -156,18 +158,40 @@ export default function Home() {
 
       setProjectsServerSynced(false);
       hasLocalProjectsRef.current = false;
+
+      const probe = await probeFirestoreServerRead();
+      if (cancelled) return;
+      firestoreServerOkRef.current = probe.ok;
+      if (probe.ok) {
+        setProjectsServerSynced(true);
+        setDataLoadError(null);
+        setDataLoadErrorDetail(null);
+      } else if (/permission-denied|unauthenticated/i.test(probe.detail)) {
+        setDataLoadError("permission-denied");
+        setDataLoadErrorDetail(probe.detail);
+        setProjectsServerSynced(true);
+      } else {
+        setDataLoadError(probe.detail);
+        setDataLoadErrorDetail(probe.detail);
+        setProjectsServerSynced(true);
+      }
+
       unsubscribe = subscribeToProjects(
         (incoming, fromCache) => {
           if (incoming.length > 0) hasLocalProjectsRef.current = true;
           setProjects(incoming.filter((p) => !deletingProjectIdsRef.current.has(p.id)));
           if (!fromCache) {
             setProjectsServerSynced(true);
+            firestoreServerOkRef.current = true;
             setDataLoadError(null);
             setDataLoadErrorDetail(null);
+          } else if (hasLocalProjectsRef.current && !firestoreServerOkRef.current) {
+            setDataLoadError("server-sync-blocked");
           }
         },
         (err) => {
           console.error("[page] projects subscription error:", err);
+          if (firestoreServerOkRef.current) return;
           setProjectsServerSynced(true);
           const detail = formatFirestoreError(err);
           if (isFirestorePermissionError(err)) {
@@ -206,6 +230,7 @@ export default function Home() {
         },
         (err) => {
           console.error("[page] tasks subscription error:", err);
+          if (firestoreServerOkRef.current) return;
           const detail = formatFirestoreError(err);
           if (isFirestorePermissionError(err)) {
             if (hasLocalProjectsRef.current) {
@@ -811,21 +836,20 @@ export default function Home() {
               <>
                 <p className="font-medium">Showing saved data — server sync is blocked.</p>
                 <p className="mt-1 text-xs text-amber-900">
-                  You are signed in and local data loaded (e.g. Helmers), but Firestore rejected the
-                  live server request. This almost always means <span className="font-medium">App Check</span>{" "}
-                  enforcement is on without the app configured.
+                  You are signed in and local data loaded, but a live Firestore server read failed.
+                  App Check is <span className="font-medium">not</span> set up on your project (Apps tab shows
+                  Register), so check the <span className="font-medium">APIs</span> tab — Firestore should be{" "}
+                  <span className="font-medium">Unenforced</span>.
                 </p>
-                <p className="mt-2 text-xs font-medium text-amber-950">Fix (pick one):</p>
+                <p className="mt-2 text-xs font-medium text-amber-950">Try:</p>
                 <ol className="mt-1 list-inside list-decimal space-y-1 text-xs text-amber-900">
+                  <li>Sign out, hard refresh (Ctrl+Shift+R), sign in again.</li>
                   <li>
-                    <span className="font-medium">Easiest:</span> Firebase Console →{" "}
-                    <span className="font-medium">App Check</span> → <span className="font-medium">Firestore</span>{" "}
-                    → set enforcement to <span className="font-medium">Unenforced</span> (or Monitoring only).
+                    In Vercel, confirm all <span className="font-mono">NEXT_PUBLIC_FIREBASE_*</span> values match
+                    Firebase → Project settings → Your apps → TPC Gantt.
                   </li>
                   <li>
-                    Or register the web app under App Check with reCAPTCHA v3, copy the site key into
-                    Vercel as <span className="font-mono">NEXT_PUBLIC_FIREBASE_APP_CHECK_RECAPTCHA_SITE_KEY</span>,
-                    then redeploy.
+                    In Firebase → Authentication → Settings → Authorized domains, add your Vercel URL if missing.
                   </li>
                 </ol>
                 <p className="mt-2 text-xs text-amber-900">
