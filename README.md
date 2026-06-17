@@ -18,9 +18,9 @@ npx firebase login
 npm run deploy:firestore-rules
 ```
 
-Or paste `firestore.rules` in **Firebase Console → Firestore → Rules → Publish**.
+Or paste `firestore.rules` in **Firebase Console → Firestore → Rules → Publish** (same result as the CLI).
 
-If signed-in users see “Firestore blocked loading your data”, production rules are usually still an old version that checks the Users email list on the server. Redeploy the rules above.
+If signed-in users still cannot load data after rules are correct, check **Vercel env** `NEXT_PUBLIC_FIREBASE_PROJECT_ID` matches the Firebase project, Firestore rules are on the **(default)** database, and **App Check** is not enforcing Firestore without client setup.
 
 ### Google sign-in from localhost
 

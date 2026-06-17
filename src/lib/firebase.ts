@@ -39,6 +39,10 @@ export function getFirebaseAuth() {
   return getAuth(getFirebaseApp());
 }
 
+export function getFirebaseProjectId() {
+  return firebaseConfig.projectId ?? "";
+}
+
 let firestoreSingleton: Firestore | null = null;
 
 /**

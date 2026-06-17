@@ -80,8 +80,22 @@ export async function ensureAuthTokenForFirestore() {
   const auth = getFirebaseAuth();
   await auth.authStateReady();
   const user = auth.currentUser;
-  if (!user) return;
+  if (!user) return null;
   await user.getIdToken();
+  return user;
+}
+
+/**
+ * Wait until Google sign-in is complete and an ID token is available for Firestore.
+ * With rules `request.auth != null`, permission-denied usually means this never settled.
+ */
+export async function waitForSignedInSession() {
+  await waitForRedirectAndAuthReady();
+  const auth = getFirebaseAuth();
+  const user = auth.currentUser;
+  if (!user) return null;
+  await user.getIdToken();
+  return user;
 }
 
 export async function logout() {

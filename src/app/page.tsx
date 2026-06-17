@@ -5,12 +5,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import GanttScheduler from "@/components/GanttScheduler";
 import CalendarEventInbox from "@/components/CalendarEventInbox";
-import { logout, subscribeToAuth, waitForRedirectAndAuthReady, ensureAuthTokenForFirestore } from "@/lib/auth";
+import { logout, subscribeToAuth, waitForSignedInSession } from "@/lib/auth";
 import HistoryLog from "@/components/HistoryLog";
 import AssignedToManager from "@/components/AssignedToManager";
 import UserManager from "@/components/UserManager";
 import CsvBulkUpload from "@/components/CsvBulkUpload";
-import { isEmailAllowlisted, isEmailAllowlistedWithoutFirestore, isUserAllowlistEnforced, isBuiltinAllowedUserEmail } from "@/lib/allowedUsers";
+import { isEmailAllowlisted, isEmailAllowlistedWithoutFirestore, isUserAllowlistEnforced } from "@/lib/allowedUsers";
 import {
   createProject,
   createTask,
@@ -43,10 +43,12 @@ import type {
 import { DEFAULT_ASSIGNED_OPTIONS } from "@/types/scheduler";
 import { useAutoBackup } from "@/hooks/useAutoBackup";
 import { useCalendarInbox } from "@/hooks/useCalendarInbox";
+import { getFirebaseProjectId } from "@/lib/firebase";
+import { formatFirestoreError, isFirestorePermissionError } from "@/lib/firestoreErrors";
 import { buildCsvContent, downloadCsv } from "@/lib/csvExport";
 
 export default function Home() {
-  const APP_VERSION = "frozen-col-v14";
+  const APP_VERSION = "frozen-col-v15";
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -66,6 +68,7 @@ export default function Home() {
   /** Set when Firestore rejects a changelog write (timeline still updates). */
   const [changelogWriteWarning, setChangelogWriteWarning] = useState<string | null>(null);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
+  const [dataLoadErrorDetail, setDataLoadErrorDetail] = useState<string | null>(null);
   const [projectsServerSynced, setProjectsServerSynced] = useState(false);
   const [historyTestStatus, setHistoryTestStatus] = useState<string | null>(null);
   const DEFAULT_TITLE = "Real Estate Gantt Scheduler";
@@ -106,18 +109,29 @@ export default function Home() {
 
     (async () => {
       try {
-        await waitForRedirectAndAuthReady();
-      } catch (e) {
-        console.error(e);
-      }
-      if (cancelled) return;
-
-      unsubscribe = subscribeToAuth((user) => {
+        const user = await waitForSignedInSession();
+        if (cancelled) return;
         if (!user) {
           router.replace("/login");
           return;
         }
         setAuthReady(true);
+        setUserId(user.uid);
+        setUserEmail(user.email ?? "");
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) router.replace("/login");
+        return;
+      }
+
+      unsubscribe = subscribeToAuth((user) => {
+        if (!user) {
+          setAuthReady(false);
+          setUserId("");
+          setUserEmail("");
+          router.replace("/login");
+          return;
+        }
         setUserId(user.uid);
         setUserEmail(user.email ?? "");
       });
@@ -135,28 +149,27 @@ export default function Home() {
     let unsubscribe: (() => void) | undefined;
 
     void (async () => {
-      try {
-        await ensureAuthTokenForFirestore();
-      } catch (e) {
-        console.error("[page] auth token before Firestore:", e);
-      }
-      if (cancelled) return;
+      const user = await waitForSignedInSession();
+      if (cancelled || !user) return;
 
       setProjectsServerSynced(false);
       unsubscribe = subscribeToProjects(
         (incoming, fromCache) => {
           setProjects(incoming.filter((p) => !deletingProjectIdsRef.current.has(p.id)));
           setDataLoadError(null);
+          setDataLoadErrorDetail(null);
           if (!fromCache) setProjectsServerSynced(true);
         },
         (err) => {
           console.error("[page] projects subscription error:", err);
           setProjectsServerSynced(true);
-          const code = (err as { code?: string }).code ?? "";
-          if (/permission|insufficient/i.test(code) || /permission|insufficient/i.test(err.message)) {
+          const detail = formatFirestoreError(err);
+          if (isFirestorePermissionError(err)) {
             setDataLoadError("permission-denied");
+            setDataLoadErrorDetail(detail);
           } else {
             setDataLoadError(err.message || "Failed to load projects.");
+            setDataLoadErrorDetail(detail);
           }
         },
       );
@@ -174,12 +187,8 @@ export default function Home() {
     let unsubscribe: (() => void) | undefined;
 
     void (async () => {
-      try {
-        await ensureAuthTokenForFirestore();
-      } catch (e) {
-        console.error("[page] auth token before Firestore:", e);
-      }
-      if (cancelled) return;
+      const user = await waitForSignedInSession();
+      if (cancelled || !user) return;
 
       unsubscribe = subscribeToAllTasks(
         (incoming) => {
@@ -187,11 +196,13 @@ export default function Home() {
         },
         (err) => {
           console.error("[page] tasks subscription error:", err);
-          const code = (err as { code?: string }).code ?? "";
-          if (/permission|insufficient/i.test(code) || /permission|insufficient/i.test(err.message)) {
+          const detail = formatFirestoreError(err);
+          if (isFirestorePermissionError(err)) {
             setDataLoadError("permission-denied");
+            setDataLoadErrorDetail(detail);
           } else {
             setDataLoadError((prev) => prev ?? (err.message || "Failed to load tasks."));
+            setDataLoadErrorDetail((prev) => prev ?? detail);
           }
         },
       );
@@ -667,7 +678,10 @@ export default function Home() {
             </button>
           )}
           <p className="text-sm text-zinc-600">{userEmail}</p>
-          <p className="text-xs text-zinc-400">Version: {APP_VERSION}</p>
+          <p className="text-xs text-zinc-400">
+            Version: {APP_VERSION}
+            {getFirebaseProjectId() ? ` · Firebase: ${getFirebaseProjectId()}` : null}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {/* Calendar Inbox button */}
@@ -775,25 +789,33 @@ export default function Home() {
           <div className="min-w-0">
             {dataLoadError === "permission-denied" ? (
               <>
-                <p className="font-medium">Firestore blocked loading your data.</p>
+                <p className="font-medium">Signed in, but Firestore would not load data.</p>
                 <p className="mt-1 text-xs text-red-800">
-                  {isBuiltinAllowedUserEmail(userEmail) || isEmailAllowlistedWithoutFirestore(userEmail) ? (
-                    <>
-                      You are signed in as an administrator (<span className="font-mono">{userEmail}</span>), but
-                      the <span className="font-medium">Firestore security rules in Firebase</span> are out of date.
-                      Deploy <span className="font-mono">firestore.rules</span> from this repo: Firebase Console →
-                      Firestore → Rules → paste the file and Publish, or run{" "}
-                      <span className="font-mono">npm run deploy:firestore-rules</span> after{" "}
-                      <span className="font-mono">firebase login</span>.
-                    </>
-                  ) : (
-                    <>
-                      Ask an administrator to add your email (<span className="font-mono">{userEmail}</span>) using
-                      the <span className="font-medium">Users</span> button, or deploy current{" "}
-                      <span className="font-mono">firestore.rules</span> if rules were never updated in Firebase.
-                    </>
-                  )}
+                  Your rules already allow any signed-in user, so this usually means the app and
+                  Firebase project are mismatched, or Firestore is not receiving your login token.
                 </p>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-red-800">
+                  <li>
+                    In <span className="font-medium">Vercel → Project → Settings → Environment Variables</span>,
+                    confirm <span className="font-mono">NEXT_PUBLIC_FIREBASE_PROJECT_ID</span> is{" "}
+                    <span className="font-mono">{getFirebaseProjectId() || "tpc-gantt-chart"}</span> (same
+                    project where you edited Rules).
+                  </li>
+                  <li>
+                    In Firebase → Firestore → Rules, confirm the database dropdown says{" "}
+                    <span className="font-medium">(default)</span>, not a secondary database.
+                  </li>
+                  <li>
+                    In Firebase → App Check, if Firestore enforcement is on, either turn it off or
+                    configure App Check in the app.
+                  </li>
+                  <li>Try sign out, hard refresh (Ctrl+Shift+R), and sign in again.</li>
+                </ul>
+                {dataLoadErrorDetail && (
+                  <p className="mt-2 font-mono text-[11px] text-red-900/90 break-words">
+                    {dataLoadErrorDetail} · project={getFirebaseProjectId() || "?"} · uid={userId}
+                  </p>
+                )}
               </>
             ) : (
               <>
